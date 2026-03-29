@@ -13,6 +13,9 @@ export default function Home() {
           <Link href="/analyze" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
             Analyze
           </Link>
+          <Link href="/pricing" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
+            Pricing
+          </Link>
           <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
             Dashboard
           </Link>
