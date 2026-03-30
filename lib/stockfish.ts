@@ -16,7 +16,7 @@ async function getWorker(): Promise<Worker> {
   if (worker) return worker;
 
   // Fetch the stockfish script and create a blob worker (bypasses CORS for workers)
-  const response = await fetch('https://cdn.jsdelivr.net/npm/stockfish@16/src/stockfish.js');
+  const response = await fetch('/stockfish/stockfish.js');
   const scriptText = await response.text();
   const blob = new Blob([scriptText], { type: 'application/javascript' });
   const blobUrl = URL.createObjectURL(blob);
