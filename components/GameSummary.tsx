@@ -1,6 +1,5 @@
 'use client';
 
-import EvalChart from '@/components/EvalChart';
 import { type AnalyzedMove, type MoveClassification } from '@/lib/chess-utils';
 
 interface GameSummaryProps {
@@ -28,11 +27,9 @@ function countClassification(moves: AnalyzedMove[], color: 'w' | 'b', cls: MoveC
 }
 
 function accuracyColor(acc: number): string {
-  if (acc >= 90) return '#22c55e';   // green
-  if (acc >= 75) return '#86efac';   // light green
+  if (acc >= 80) return '#22c55e';   // green
   if (acc >= 60) return '#fbbf24';   // yellow
-  if (acc >= 45) return '#f97316';   // orange
-  return '#ef4444';                   // red
+  return '#f97316';                   // orange
 }
 
 const CLASSIFICATIONS: { key: MoveClassification; label: string; icon: string; color: string }[] = [
@@ -47,112 +44,84 @@ export default function GameSummary({
   moves,
   whiteName = 'White',
   blackName = 'Black',
-  currentMoveIndex,
-  onSelectMove,
   onStartReview,
 }: GameSummaryProps) {
   const whiteAcc = calcAccuracy(moves, 'w');
   const blackAcc = calcAccuracy(moves, 'b');
 
   return (
-    <div className="p-4 flex flex-col gap-5">
-      {/* Header */}
-      <div>
-        <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400 mb-3">
-          Game Summary
-        </h2>
-
-        {/* Eval chart */}
-        <EvalChart
-          moves={moves}
-          currentIndex={currentMoveIndex}
-          onSelectMove={onSelectMove}
-        />
-      </div>
-
-      {/* Accuracy section */}
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-          Accuracy
+    <div className="flex flex-col gap-4 p-4">
+      {/* Player accuracy rows — chess.com style */}
+      <div className="flex flex-col gap-1">
+        {/* White row */}
+        <div className="flex items-center gap-2 py-2 px-3 bg-zinc-900 rounded-lg border border-zinc-800">
+          <span className="text-base">♔</span>
+          <span className="text-sm text-zinc-300 flex-1 truncate font-medium" title={whiteName}>
+            {whiteName}
+          </span>
+          <span
+            className="text-sm font-bold tabular-nums shrink-0"
+            style={{ color: accuracyColor(whiteAcc) }}
+          >
+            {whiteAcc.toFixed(1)}%
+          </span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {/* White */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col items-center gap-2">
-            <div className="text-2xl">♔</div>
-            <div className="text-xs text-zinc-400 font-medium truncate max-w-full text-center" title={whiteName}>
-              {whiteName}
-            </div>
-            <div
-              className="text-3xl font-bold leading-none tabular-nums"
-              style={{ color: accuracyColor(whiteAcc) }}
-            >
-              {whiteAcc.toFixed(1)}
-            </div>
-            <div className="text-xs text-zinc-600">accuracy</div>
-          </div>
 
-          {/* Black */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col items-center gap-2">
-            <div className="text-2xl">♚</div>
-            <div className="text-xs text-zinc-400 font-medium truncate max-w-full text-center" title={blackName}>
-              {blackName}
-            </div>
-            <div
-              className="text-3xl font-bold leading-none tabular-nums"
-              style={{ color: accuracyColor(blackAcc) }}
-            >
-              {blackAcc.toFixed(1)}
-            </div>
-            <div className="text-xs text-zinc-600">accuracy</div>
-          </div>
+        {/* Black row */}
+        <div className="flex items-center gap-2 py-2 px-3 bg-zinc-900 rounded-lg border border-zinc-800">
+          <span className="text-base">♚</span>
+          <span className="text-sm text-zinc-300 flex-1 truncate font-medium" title={blackName}>
+            {blackName}
+          </span>
+          <span
+            className="text-sm font-bold tabular-nums shrink-0"
+            style={{ color: accuracyColor(blackAcc) }}
+          >
+            {blackAcc.toFixed(1)}%
+          </span>
         </div>
       </div>
 
-      {/* Move classification breakdown */}
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-          Move Breakdown
+      {/* Move classification breakdown — compact chess.com style */}
+      <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+        {/* Table header */}
+        <div className="grid grid-cols-[1fr_auto_auto] border-b border-zinc-800">
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Type</div>
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 text-center w-10 uppercase tracking-wider">♔</div>
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 text-center w-10 uppercase tracking-wider">♚</div>
         </div>
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[1fr_auto_auto] gap-0 border-b border-zinc-800">
-            <div className="px-3 py-2 text-xs font-semibold text-zinc-500">Type</div>
-            <div className="px-3 py-2 text-xs font-semibold text-zinc-500 text-center w-14">♔</div>
-            <div className="px-3 py-2 text-xs font-semibold text-zinc-500 text-center w-14">♚</div>
-          </div>
 
-          {CLASSIFICATIONS.map(({ key, label, icon, color }) => {
-            const wCount = countClassification(moves, 'w', key);
-            const bCount = countClassification(moves, 'b', key);
-            return (
-              <div
-                key={key}
-                className="grid grid-cols-[1fr_auto_auto] gap-0 border-b border-zinc-800/50 last:border-b-0 hover:bg-zinc-800/30 transition-colors"
-              >
-                <div className="px-3 py-2 flex items-center gap-2">
-                  <span className="text-sm">{icon}</span>
-                  <span className="text-xs font-medium" style={{ color }}>
-                    {label}
-                  </span>
-                </div>
-                <div className="px-3 py-2 text-sm font-bold text-center w-14 tabular-nums" style={{ color: wCount > 0 ? color : '#52525b' }}>
-                  {wCount}
-                </div>
-                <div className="px-3 py-2 text-sm font-bold text-center w-14 tabular-nums" style={{ color: bCount > 0 ? color : '#52525b' }}>
-                  {bCount}
-                </div>
+        {CLASSIFICATIONS.map(({ key, label, icon, color }) => {
+          const wCount = countClassification(moves, 'w', key);
+          const bCount = countClassification(moves, 'b', key);
+          return (
+            <div
+              key={key}
+              className="grid grid-cols-[1fr_auto_auto] border-b border-zinc-800/50 last:border-b-0 hover:bg-zinc-800/30 transition-colors"
+            >
+              <div className="px-3 py-2 flex items-center gap-2">
+                <span className="text-xs">{icon}</span>
+                <span className="text-xs font-medium" style={{ color }}>
+                  {label}
+                </span>
               </div>
-            );
-          })}
-        </div>
+              <div className="px-3 py-2 text-sm font-bold text-center w-10 tabular-nums" style={{ color: wCount > 0 ? color : '#52525b' }}>
+                {wCount}
+              </div>
+              <div className="px-3 py-2 text-sm font-bold text-center w-10 tabular-nums" style={{ color: bCount > 0 ? color : '#52525b' }}>
+                {bCount}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Start Review button */}
+      {/* Review Game button — amber/gold chess.com style */}
       <button
         onClick={onStartReview}
-        className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl transition-colors text-sm tracking-wide"
+        className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-3 px-4 rounded-xl transition-colors text-sm tracking-wide"
       >
-        Start Review →
+        Review Game →
       </button>
     </div>
   );

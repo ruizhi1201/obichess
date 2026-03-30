@@ -423,19 +423,22 @@ export default function AnalyzePage() {
               />
             </div>
 
-            {/* Right: Eval chart always on top, then Game Summary or Analysis Panel */}
+            {/* Right: EvalChart always on top, then GameSummary or AnalysisPanel */}
             <div className="w-80 overflow-y-auto shrink-0 flex flex-col">
-              {/* Eval chart — always visible at top once data is available */}
+              {/* EvalChart — always visible once we have data */}
               {moves.some(m => m.winPercentAfter !== undefined) && (
-                <div className="p-3 border-b border-zinc-800 shrink-0">
+                <div className="p-3 pb-0 shrink-0">
                   <EvalChart
                     moves={moves}
                     currentIndex={currentMoveIndex}
                     onSelectMove={handleMoveSelect}
+                    whiteName={whiteName ?? 'White'}
+                    blackName={blackName ?? 'Black'}
                   />
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto">
+
+              {/* Below chart: GameSummary stats OR AnalysisPanel */}
               {analysisComplete && !selectedMove ? (
                 <GameSummary
                   moves={moves}
@@ -451,7 +454,6 @@ export default function AnalyzePage() {
                   currentFen={currentFen}
                 />
               )}
-              </div>
             </div>
           </div>
         )}
