@@ -9,21 +9,22 @@ import {
   Tooltip,
   ReferenceLine,
   ResponsiveContainer,
-  Dot,
 } from 'recharts';
-import { type AnalyzedMove, classificationColor, formatEval } from '@/lib/chess-utils';
+import { type AnalyzedMove, formatEval } from '@/lib/chess-utils';
 
 interface EvalChartProps {
   moves: AnalyzedMove[];
   currentIndex: number;
   onSelectMove: (index: number) => void;
+  whiteName?: string;
+  blackName?: string;
 }
 
 interface ChartDataPoint {
-  index: number;       // move index (0-based)
-  label: string;       // e.g. "1." or "1..."
-  winPercent: number;  // 0-100
-  cp: number;          // centipawns (for tooltip)
+  index: number;
+  label: string;
+  winPercent: number;
+  cp: number;
   mate: number | null;
   classification?: string;
   san: string;
@@ -108,7 +109,7 @@ const CustomTooltip = ({
   );
 };
 
-export default function EvalChart({ moves, currentIndex, onSelectMove }: EvalChartProps) {
+export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName, blackName }: EvalChartProps) {
   if (!moves.length) return null;
 
   // Build chart data — one point per move, using winPercentAfter
@@ -135,87 +136,98 @@ export default function EvalChart({ moves, currentIndex, onSelectMove }: EvalCha
   };
 
   return (
-    <div className="w-full bg-zinc-900 rounded-xl border border-zinc-800 p-3">
-      <div className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-2">
-        Game Evaluation
-      </div>
-      <ResponsiveContainer width="100%" height={120}>
-        <AreaChart
-          data={data}
-          margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
-          onClick={handleClick}
-          style={{ cursor: 'pointer' }}
-        >
-          <defs>
-            {/* White advantage fill */}
-            <linearGradient id="whiteGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#ffffff" stopOpacity={0.05} />
-            </linearGradient>
-            {/* Black advantage fill (below 50%) — we clip with two areas */}
-            <linearGradient id="blackGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3f3f46" stopOpacity={0.1} />
-              <stop offset="100%" stopColor="#3f3f46" stopOpacity={0.4} />
-            </linearGradient>
-          </defs>
+    <div className="w-full bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+      {/* Player name labels */}
+      {(whiteName || blackName) && (
+        <div className="flex items-center justify-between px-3 pt-2 pb-0">
+          <span className="text-[10px] text-white font-semibold tracking-wide">
+            ♔ {whiteName ?? 'White'}
+          </span>
+          <span className="text-[10px] text-zinc-500 font-semibold tracking-wide">
+            ♚ {blackName ?? 'Black'}
+          </span>
+        </div>
+      )}
 
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#27272a"
-            vertical={false}
-          />
+      <div className="px-3 pb-2 pt-2">
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart
+            data={data}
+            margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+            onClick={handleClick}
+            style={{ cursor: 'pointer' }}
+          >
+            <defs>
+              {/* White advantage fill — bright white above 50% */}
+              <linearGradient id="evalWhiteGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity={0.55} />
+                <stop offset="50%" stopColor="#ffffff" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity={0.1} />
+              </linearGradient>
+              {/* Black advantage fill — dark below 50% */}
+              <linearGradient id="evalBlackGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#18181b" stopOpacity={0.1} />
+                <stop offset="100%" stopColor="#09090b" stopOpacity={0.7} />
+              </linearGradient>
+            </defs>
 
-          <XAxis
-            dataKey="index"
-            tick={false}
-            axisLine={{ stroke: '#3f3f46' }}
-            tickLine={false}
-          />
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#27272a"
+              vertical={false}
+            />
 
-          <YAxis
-            domain={[0, 100]}
-            ticks={[0, 25, 50, 75, 100]}
-            tick={{ fill: '#52525b', fontSize: 9 }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v) => `${v}%`}
-          />
+            <XAxis
+              dataKey="index"
+              tick={false}
+              axisLine={{ stroke: '#3f3f46' }}
+              tickLine={false}
+            />
 
-          <Tooltip
-            content={<CustomTooltip />}
-            cursor={{ stroke: '#52525b', strokeDasharray: '4 2' }}
-          />
+            <YAxis
+              domain={[0, 100]}
+              ticks={[0, 25, 50, 75, 100]}
+              tick={{ fill: '#52525b', fontSize: 9 }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => `${v}%`}
+            />
 
-          {/* 50% reference line */}
-          <ReferenceLine
-            y={50}
-            stroke="#52525b"
-            strokeDasharray="4 2"
-            strokeWidth={1}
-          />
+            <Tooltip
+              content={<CustomTooltip />}
+              cursor={{ stroke: '#52525b', strokeDasharray: '4 2' }}
+            />
 
-          {/* Main area — white advantage above 50 */}
-          <Area
-            type="monotone"
-            dataKey="winPercent"
-            stroke="#a1a1aa"
-            strokeWidth={1.5}
-            fill="url(#whiteGradient)"
-            dot={<ClassificationDot currentIndex={currentIndex} />}
-            activeDot={false}
-            isAnimationActive={false}
-            baseValue={50}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+            {/* 50% reference line */}
+            <ReferenceLine
+              y={50}
+              stroke="#71717a"
+              strokeDasharray="4 2"
+              strokeWidth={1}
+            />
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 mt-1 text-[10px] text-zinc-600">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Best</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />Inaccuracy</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Mistake</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Blunder</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Current</span>
+            {/* White advantage area (above 50) */}
+            <Area
+              type="monotone"
+              dataKey="winPercent"
+              stroke="#d4d4d8"
+              strokeWidth={2}
+              fill="url(#evalWhiteGradient)"
+              dot={<ClassificationDot currentIndex={currentIndex} />}
+              activeDot={false}
+              isAnimationActive={false}
+              baseValue={50}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 mt-1 text-[10px] text-zinc-600">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Best</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />Inaccuracy</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Mistake</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Blunder</span>
+        </div>
       </div>
     </div>
   );

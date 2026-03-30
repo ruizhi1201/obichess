@@ -406,16 +406,7 @@ export default function AnalyzePage() {
                 <button onClick={goToEnd} className="chess-nav-btn" title="End">⏭</button>
               </div>
 
-              {/* Eval chart — shows after analysis has any winPercent data */}
-              {moves.some(m => m.winPercentAfter !== undefined) && (
-                <div className="w-full max-w-[560px]">
-                  <EvalChart
-                    moves={moves}
-                    currentIndex={currentMoveIndex}
-                    onSelectMove={handleMoveSelect}
-                  />
-                </div>
-              )}
+              {/* Eval chart removed from here — now in right panel */}
 
               {/* Chat panel below board */}
               <div className="w-full max-w-[560px]">
@@ -432,8 +423,19 @@ export default function AnalyzePage() {
               />
             </div>
 
-            {/* Right: Game Summary (after analysis) or Analysis Panel (during review) */}
-            <div className="w-80 overflow-y-auto shrink-0">
+            {/* Right: Eval chart always on top, then Game Summary or Analysis Panel */}
+            <div className="w-80 overflow-y-auto shrink-0 flex flex-col">
+              {/* Eval chart — always visible at top once data is available */}
+              {moves.some(m => m.winPercentAfter !== undefined) && (
+                <div className="p-3 border-b border-zinc-800 shrink-0">
+                  <EvalChart
+                    moves={moves}
+                    currentIndex={currentMoveIndex}
+                    onSelectMove={handleMoveSelect}
+                  />
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto">
               {analysisComplete && !selectedMove ? (
                 <GameSummary
                   moves={moves}
@@ -449,6 +451,7 @@ export default function AnalyzePage() {
                   currentFen={currentFen}
                 />
               )}
+              </div>
             </div>
           </div>
         )}
