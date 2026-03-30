@@ -12,6 +12,9 @@ export interface AnalyzedMove {
   classification?: MoveClassification;
   evalBefore?: number; // centipawns from white's perspective
   evalAfter?: number;
+  winPercentBefore?: number; // 0-100, white win probability before this move
+  winPercentAfter?: number;  // 0-100, white win probability after this move
+  mate?: number | null;      // if forced mate, e.g. 3 = white mates in 3, -3 = black mates in 3
   bestMove?: string; // UCI notation
   bestMoveSan?: string;
 }
@@ -93,6 +96,10 @@ export function classificationLabel(c: MoveClassification): string {
     case 'blunder': return '?? Blunder';
     default: return '';
   }
+}
+
+export function cpToWinPercent(cp: number): number {
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
 }
 
 export function formatEval(cp: number): string {

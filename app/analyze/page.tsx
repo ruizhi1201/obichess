@@ -3,11 +3,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove } from '@/lib/chess-utils';
+import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
 import MoveList from '@/components/MoveList';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import ChatPanel from '@/components/ChatPanel';
 import PGNUploader from '@/components/PGNUploader';
+import EvalChart from '@/components/EvalChart';
 import { supabase, isUserPro } from '@/lib/supabase';
 
 // Dynamic import — react-chessboard requires browser
@@ -117,6 +118,16 @@ export default function AnalyzePage() {
             const evalBefore = evals[i];
             const evalAfter = i < analyzedMoves.length - 1 ? evals[i + 1] : lastResult.eval;
             
+            // Compute win percentages
+            const winPercentBefore = cpToWinPercent(evalBefore);
+            const winPercentAfter = cpToWinPercent(evalAfter);
+
+            // Detect forced mate from eval encoding (±1000 range used for mates)
+            let mate: number | null = null;
+            if (Math.abs(evalAfter) >= 900) {
+              mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
+            }
+
             // Get best move for this position
             const posResult = await analyzePosition(analyzedMoves[i].fenBefore, 16);
             
@@ -124,6 +135,9 @@ export default function AnalyzePage() {
               ...analyzedMoves[i],
               evalBefore,
               evalAfter,
+              winPercentBefore,
+              winPercentAfter,
+              mate,
               bestMove: posResult.bestMove,
               classification: classifyMove(evalBefore, evalAfter, analyzedMoves[i].color),
             };
@@ -269,6 +283,17 @@ export default function AnalyzePage() {
                 <button onClick={goToNext} className="chess-nav-btn" title="Next">▶</button>
                 <button onClick={goToEnd} className="chess-nav-btn" title="End">⏭</button>
               </div>
+
+              {/* Eval chart — shows after analysis has any winPercent data */}
+              {moves.some(m => m.winPercentAfter !== undefined) && (
+                <div className="w-full max-w-[560px]">
+                  <EvalChart
+                    moves={moves}
+                    currentIndex={currentMoveIndex}
+                    onSelectMove={handleMoveSelect}
+                  />
+                </div>
+              )}
 
               {/* Chat panel below board */}
               <div className="w-full max-w-[560px]">
