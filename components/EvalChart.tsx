@@ -5,7 +5,6 @@ import {
   Area,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ReferenceLine,
   ResponsiveContainer,
@@ -40,37 +39,6 @@ function classificationDotColor(classification?: string): string {
     default:           return 'transparent';
   }
 }
-
-// Custom dot that shows classification color on notable moves
-const ClassificationDot = (props: {
-  cx?: number;
-  cy?: number;
-  payload?: ChartDataPoint;
-  currentIndex?: number;
-}) => {
-  const { cx, cy, payload, currentIndex } = props;
-  if (cx === undefined || cy === undefined || !payload) return null;
-
-  const isActive = payload.index === currentIndex;
-  const dotColor = classificationDotColor(payload.classification);
-  const showDot = dotColor !== 'transparent' || isActive;
-
-  if (!showDot) return null;
-
-  const color = isActive ? '#f59e0b' : dotColor;
-  const r = isActive ? 5 : 4;
-
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={r}
-      fill={color}
-      stroke="#18181b"
-      strokeWidth={1.5}
-    />
-  );
-};
 
 // Custom tooltip
 const CustomTooltip = ({
@@ -130,104 +98,60 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleClick = (data: any) => {
-    const point = data?.activePayload?.[0]?.payload as ChartDataPoint | undefined;
+  const handleClick = (chartData: any) => {
+    const point = chartData?.activePayload?.[0]?.payload as ChartDataPoint | undefined;
     if (point) onSelectMove(point.index);
   };
 
   return (
-    <div className="w-full bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
-      {/* Player name labels */}
-      {(whiteName || blackName) && (
-        <div className="flex items-center justify-between px-3 pt-2 pb-0">
-          <span className="text-[10px] text-white font-semibold tracking-wide">
-            ♔ {whiteName ?? 'White'}
-          </span>
-          <span className="text-[10px] text-zinc-500 font-semibold tracking-wide">
-            ♚ {blackName ?? 'Black'}
-          </span>
-        </div>
-      )}
+    <div className="w-full bg-[#1a1a1a] rounded overflow-hidden">
+      {/* Player names */}
+      <div className="flex justify-between px-2 pt-1 text-[10px]">
+        <span className="text-zinc-300">♔ {whiteName || 'White'}</span>
+        <span className="text-zinc-300">♚ {blackName || 'Black'}</span>
+      </div>
 
-      <div className="px-3 pb-2 pt-2">
-        <ResponsiveContainer width="100%" height={180}>
-          <AreaChart
-            data={data}
-            margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
-            onClick={handleClick}
-            style={{ cursor: 'pointer' }}
-          >
-            <defs>
-              {/* White advantage fill — bright white above 50% */}
-              <linearGradient id="evalWhiteGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity={0.55} />
-                <stop offset="50%" stopColor="#ffffff" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#ffffff" stopOpacity={0.1} />
-              </linearGradient>
-              {/* Black advantage fill — dark below 50% */}
-              <linearGradient id="evalBlackGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#18181b" stopOpacity={0.1} />
-                <stop offset="100%" stopColor="#09090b" stopOpacity={0.7} />
-              </linearGradient>
-            </defs>
+      <ResponsiveContainer width="100%" height={100}>
+        <AreaChart
+          data={data}
+          margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+          onClick={handleClick}
+          style={{ cursor: 'pointer' }}
+        >
+          <defs>
+            <linearGradient id="lichessWhite" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.9} />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity={0.6} />
+            </linearGradient>
+          </defs>
 
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#27272a"
-              vertical={false}
-            />
+          <YAxis domain={[0, 100]} hide />
+          <XAxis dataKey="index" hide />
+          <Tooltip
+            content={<CustomTooltip />}
+            cursor={{ stroke: '#666', strokeWidth: 1 }}
+          />
+          <ReferenceLine y={50} stroke="#555" strokeWidth={1} />
 
-            <XAxis
-              dataKey="index"
-              tick={false}
-              axisLine={{ stroke: '#3f3f46' }}
-              tickLine={false}
-            />
+          {/* Main area - white fill above 50%, dark background below */}
+          <Area
+            type="monotone"
+            dataKey="winPercent"
+            stroke="#888888"
+            strokeWidth={1}
+            fill="url(#lichessWhite)"
+            baseValue={50}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
 
-            <YAxis
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
-              tick={{ fill: '#52525b', fontSize: 9 }}
-              axisLine={false}
-              tickLine={false}
-              tickFormatter={(v) => `${v}%`}
-            />
-
-            <Tooltip
-              content={<CustomTooltip />}
-              cursor={{ stroke: '#52525b', strokeDasharray: '4 2' }}
-            />
-
-            {/* 50% reference line */}
-            <ReferenceLine
-              y={50}
-              stroke="#71717a"
-              strokeDasharray="4 2"
-              strokeWidth={1}
-            />
-
-            {/* White advantage area (above 50) */}
-            <Area
-              type="monotone"
-              dataKey="winPercent"
-              stroke="#d4d4d8"
-              strokeWidth={2}
-              fill="url(#evalWhiteGradient)"
-              dot={<ClassificationDot currentIndex={currentIndex} />}
-              activeDot={false}
-              isAnimationActive={false}
-              baseValue={50}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-
-        {/* Legend */}
-        <div className="flex items-center gap-4 mt-1 text-[10px] text-zinc-600">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Best</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />Inaccuracy</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Mistake</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Blunder</span>
-        </div>
+      {/* Legend */}
+      <div className="flex items-center gap-3 px-2 pb-1 text-[9px] text-zinc-500">
+        <span><span style={{color:'#22c55e'}}>●</span> Best</span>
+        <span><span style={{color:'#fbbf24'}}>●</span> Inaccuracy</span>
+        <span><span style={{color:'#f97316'}}>●</span> Mistake</span>
+        <span><span style={{color:'#ef4444'}}>●</span> Blunder</span>
       </div>
     </div>
   );
