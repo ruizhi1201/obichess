@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
@@ -9,6 +9,7 @@ import AnalysisPanel from '@/components/AnalysisPanel';
 import ChatPanel from '@/components/ChatPanel';
 import PGNUploader from '@/components/PGNUploader';
 import EvalChart from '@/components/EvalChart';
+import GameSummary from '@/components/GameSummary';
 import { supabase, isUserPro } from '@/lib/supabase';
 
 // Dynamic import — react-chessboard requires browser
@@ -43,6 +44,8 @@ export default function AnalyzePage() {
   const [isPro, setIsPro] = useState<boolean | null>(null);
   const [analysisCount, setAnalysisCount] = useState(0);
   const [showUpgradeGate, setShowUpgradeGate] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const moveListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setAnalysisCount(getAnalysisCount());
@@ -87,6 +90,7 @@ export default function AnalyzePage() {
     setSelectedMove(null);
     setIsAnalyzing(true);
     setAnalysisProgress(0);
+    setAnalysisComplete(false);
 
     // Run Stockfish analysis on all positions
     try {
@@ -148,6 +152,7 @@ export default function AnalyzePage() {
       }
 
       setMoves(analyzedMoves);
+      setAnalysisComplete(true);
     } catch (e) {
       console.error('Stockfish analysis failed:', e);
     } finally {
@@ -182,6 +187,18 @@ export default function AnalyzePage() {
   };
 
   const lastMove = currentMoveIndex >= 0 ? moves[currentMoveIndex] : null;
+
+  const whiteName = game?.headers['White'] || 'White';
+  const blackName = game?.headers['Black'] || 'Black';
+
+  const handleStartReview = useCallback(() => {
+    // Jump to first move and scroll move list into view
+    if (moves.length > 0) {
+      setCurrentMoveIndex(0);
+      setSelectedMove(moves[0]);
+    }
+    moveListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [moves]);
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -302,7 +319,7 @@ export default function AnalyzePage() {
             </div>
 
             {/* Center: Move list */}
-            <div className="w-56 border-l border-r border-zinc-800 overflow-y-auto shrink-0">
+            <div ref={moveListRef} className="w-56 border-l border-r border-zinc-800 overflow-y-auto shrink-0">
               <MoveList
                 moves={moves}
                 currentIndex={currentMoveIndex}
@@ -310,12 +327,23 @@ export default function AnalyzePage() {
               />
             </div>
 
-            {/* Right: Analysis panel */}
+            {/* Right: Game Summary (after analysis) or Analysis Panel (during review) */}
             <div className="w-80 overflow-y-auto shrink-0">
-              <AnalysisPanel
-                move={selectedMove}
-                currentFen={currentFen}
-              />
+              {analysisComplete && !selectedMove ? (
+                <GameSummary
+                  moves={moves}
+                  whiteName={whiteName ?? 'White'}
+                  blackName={blackName ?? 'Black'}
+                  currentMoveIndex={currentMoveIndex}
+                  onSelectMove={handleMoveSelect}
+                  onStartReview={handleStartReview}
+                />
+              ) : (
+                <AnalysisPanel
+                  move={selectedMove}
+                  currentFen={currentFen}
+                />
+              )}
             </div>
           </div>
         )}
