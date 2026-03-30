@@ -97,57 +97,47 @@ export default function AnalyzePage() {
       const { analyzePosition } = await import('@/lib/stockfish');
       const analyzedMoves = [...parsed.moves];
 
-      // First get evals for all positions (before move)
-      const evals: number[] = [];
-      
+      // Single pass — one Stockfish call per position (gets both eval AND bestMove)
+      const results: Awaited<ReturnType<typeof analyzePosition>>[] = [];
+
       for (let i = 0; i < analyzedMoves.length; i++) {
         try {
           const result = await analyzePosition(analyzedMoves[i].fenBefore, 16);
-          evals.push(result.eval);
-          
-          setAnalysisProgress(Math.round(((i + 1) / analyzedMoves.length) * 100));
+          results.push(result);
+          setAnalysisProgress(Math.round(((i + 1) / (analyzedMoves.length + 1)) * 100));
         } catch {
-          evals.push(0);
+          results.push({ bestMove: '', eval: 0, depth: 0, pv: '' });
         }
       }
 
-      // Get eval after the last move too
+      // Get eval after last move
+      let lastEval = 0;
+      try {
+        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 16);
+        lastEval = lastResult.eval;
+      } catch {}
+
+      // Build analyzedMoves with win%
       if (analyzedMoves.length > 0) {
-        try {
-          const lastResult = await analyzePosition(
-            analyzedMoves[analyzedMoves.length - 1].fenAfter, 16
-          );
-          
-          for (let i = 0; i < analyzedMoves.length; i++) {
-            const evalBefore = evals[i];
-            const evalAfter = i < analyzedMoves.length - 1 ? evals[i + 1] : lastResult.eval;
-            
-            // Compute win percentages
-            const winPercentBefore = cpToWinPercent(evalBefore);
-            const winPercentAfter = cpToWinPercent(evalAfter);
+        for (let i = 0; i < analyzedMoves.length; i++) {
+          const evalBefore = results[i].eval;
+          const evalAfter = i < analyzedMoves.length - 1 ? results[i + 1].eval : lastEval;
 
-            // Detect forced mate from eval encoding (±1000 range used for mates)
-            let mate: number | null = null;
-            if (Math.abs(evalAfter) >= 900) {
-              mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
-            }
-
-            // Get best move for this position
-            const posResult = await analyzePosition(analyzedMoves[i].fenBefore, 16);
-            
-            analyzedMoves[i] = {
-              ...analyzedMoves[i],
-              evalBefore,
-              evalAfter,
-              winPercentBefore,
-              winPercentAfter,
-              mate,
-              bestMove: posResult.bestMove,
-              classification: classifyMove(evalBefore, evalAfter, analyzedMoves[i].color),
-            };
+          let mate: number | null = null;
+          if (Math.abs(evalAfter) >= 900) {
+            mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
           }
-        } catch {
-          // fallback without last eval
+
+          analyzedMoves[i] = {
+            ...analyzedMoves[i],
+            evalBefore,
+            evalAfter,
+            winPercentBefore: cpToWinPercent(evalBefore),
+            winPercentAfter: cpToWinPercent(evalAfter),
+            mate,
+            bestMove: results[i].bestMove,
+            classification: classifyMove(evalBefore, evalAfter, analyzedMoves[i].color),
+          };
         }
       }
 

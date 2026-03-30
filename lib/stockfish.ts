@@ -1,7 +1,7 @@
 'use client';
 
 // Stockfish.js wrapper — runs in browser via Web Worker
-// Uses stockfish.js from CDN or local public/stockfish/
+// Uses stockfish.js from CDN via blob URL (bypasses cross-origin worker restriction)
 
 export interface StockfishResult {
   bestMove: string; // UCI notation e.g. "e2e4"
@@ -12,13 +12,30 @@ export interface StockfishResult {
 
 let worker: Worker | null = null;
 
-function getWorker(): Worker {
-  if (!worker) {
-    // Use stockfish from CDN (nmrugg's stockfish.js)
-    worker = new Worker('https://cdn.jsdelivr.net/npm/stockfish@16/src/stockfish.js');
-    worker.postMessage('uci');
-    worker.postMessage('isready');
-  }
+async function getWorker(): Promise<Worker> {
+  if (worker) return worker;
+
+  // Fetch the stockfish script and create a blob worker (bypasses CORS for workers)
+  const response = await fetch('https://cdn.jsdelivr.net/npm/stockfish@16/src/stockfish.js');
+  const scriptText = await response.text();
+  const blob = new Blob([scriptText], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  worker = new Worker(blobUrl);
+
+  // Wait for ready
+  await new Promise<void>((resolve) => {
+    const handler = (e: MessageEvent) => {
+      if (e.data === 'readyok') {
+        worker!.removeEventListener('message', handler);
+        resolve();
+      }
+    };
+    worker!.addEventListener('message', handler);
+    worker!.postMessage('uci');
+    worker!.postMessage('isready');
+  });
+
   return worker;
 }
 
@@ -26,8 +43,9 @@ export async function analyzePosition(
   fen: string,
   depth: number = 18
 ): Promise<StockfishResult> {
+  const w = await getWorker();
+
   return new Promise((resolve, reject) => {
-    const w = getWorker();
     let bestMove = '';
     let evalScore = 0;
     let pvLine = '';
@@ -69,8 +87,9 @@ export async function analyzePosition(
         const parts = msg.split(' ');
         bestMove = parts[1] || pvLine;
 
-        // Adjust eval: if it's black's turn, stockfish reports from white's perspective
-        // which is what we want
+        // Debug logging — verify Stockfish is actually running
+        console.log(`[Stockfish] FEN: ${fen.substring(0, 30)}... → cp=${evalScore}, bestMove=${bestMove}, depth=${bestDepth}`);
+
         resolve({
           bestMove,
           eval: evalScore,
