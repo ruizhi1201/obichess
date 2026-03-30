@@ -5,47 +5,40 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
 import MoveList from '@/components/MoveList';
-import AnalysisPanel from '@/components/AnalysisPanel';
-import ChatPanel from '@/components/ChatPanel';
+import CoachPanel from '@/components/CoachPanel';
 import PGNUploader from '@/components/PGNUploader';
 import EvalChart from '@/components/EvalChart';
 import GameSummary from '@/components/GameSummary';
 import { supabase, isUserPro } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
-// Dynamic import — react-chessboard requires browser
 const ChessBoard = dynamic(() => import('@/components/ChessBoard'), { ssr: false });
 
-const GUEST_ANALYSIS_LIMIT = 2;  // no login required
-const FREE_ANALYSIS_LIMIT = 5;   // total per month (after login)
+const GUEST_ANALYSIS_LIMIT = 2;
+const FREE_ANALYSIS_LIMIT = 5;
 
 function getGuestMonthKey() {
   const d = new Date();
   return `analyses_guest_${d.getFullYear()}_${d.getMonth()}`;
 }
-
 function getUserMonthKey(userId: string) {
   const d = new Date();
   return `analyses_${userId}_${d.getFullYear()}_${d.getMonth()}`;
 }
-
 function getGuestAnalysisCount(): number {
   if (typeof window === 'undefined') return 0;
   return parseInt(localStorage.getItem(getGuestMonthKey()) || '0', 10);
 }
-
 function getUserAnalysisCount(userId: string): number {
   if (typeof window === 'undefined') return 0;
   return parseInt(localStorage.getItem(getUserMonthKey(userId)) || '0', 10);
 }
-
 function incrementGuestCount(): number {
   if (typeof window === 'undefined') return 0;
   const count = getGuestAnalysisCount() + 1;
   localStorage.setItem(getGuestMonthKey(), String(count));
   return count;
 }
-
 function incrementUserCount(userId: string): number {
   if (typeof window === 'undefined') return 0;
   const count = getUserAnalysisCount(userId) + 1;
@@ -53,7 +46,8 @@ function incrementUserCount(userId: string): number {
   return count;
 }
 
-// Sign-in modal component
+// ── Modals ──────────────────────────────────────────────────────────────────
+
 function SignInModal({ onClose }: { onClose: () => void }) {
   const handleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
@@ -61,29 +55,20 @@ function SignInModal({ onClose }: { onClose: () => void }) {
       options: { redirectTo: `${window.location.origin}/analyze` },
     });
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
-          aria-label="Close"
-        >
-          ✕ close
-        </button>
-
+        <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 text-sm">✕ close</button>
         <div className="text-4xl mb-4">♟️</div>
         <h2 className="text-xl font-bold mb-2">Keep analyzing for free</h2>
         <p className="text-zinc-400 text-sm mb-6">
           You&apos;ve used your {GUEST_ANALYSIS_LIMIT} free guest analyses. Sign in for free to get{' '}
           {FREE_ANALYSIS_LIMIT} analyses per month — no credit card needed.
         </p>
-
         <div className="flex flex-col gap-3">
           <button
             onClick={handleSignIn}
-            className="bg-white hover:bg-zinc-100 text-zinc-900 font-semibold px-6 py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+            className="bg-white hover:bg-zinc-100 text-zinc-900 font-semibold px-6 py-3 rounded-xl flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -93,25 +78,110 @@ function SignInModal({ onClose }: { onClose: () => void }) {
             </svg>
             Sign in with Google
           </button>
-          <Link
-            href="/pricing"
-            className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-6 py-3 rounded-xl transition-colors"
-          >
+          <Link href="/pricing" className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-6 py-3 rounded-xl text-center">
             Upgrade to Pro →
           </Link>
         </div>
-
-        <p className="text-zinc-600 text-xs mt-4">
-          Already signed in? Refresh the page
-        </p>
+        <p className="text-zinc-600 text-xs mt-4">Already signed in? Refresh the page</p>
       </div>
     </div>
   );
 }
 
+// Ask which color the user played
+function ColorPickerModal({ onSelect }: { onSelect: (color: 'w' | 'b') => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl">
+        <div className="text-4xl mb-4">♟️</div>
+        <h2 className="text-xl font-bold mb-2">Which side are you?</h2>
+        <p className="text-zinc-400 text-sm mb-6">
+          Obi will analyze the game from your perspective.
+        </p>
+        <div className="flex gap-4 justify-center">
+          <button
+            onClick={() => onSelect('w')}
+            className="flex flex-col items-center gap-2 bg-white hover:bg-zinc-100 text-zinc-900 font-bold px-8 py-5 rounded-2xl transition-colors"
+          >
+            <span className="text-4xl">♔</span>
+            <span>White</span>
+          </button>
+          <button
+            onClick={() => onSelect('b')}
+            className="flex flex-col items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold px-8 py-5 rounded-2xl transition-colors border border-zinc-600"
+          >
+            <span className="text-4xl">♚</span>
+            <span>Black</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Full-screen loading overlay
+function AnalyzingOverlay({ progress }: { progress: number }) {
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl">
+        <div className="text-4xl mb-4 animate-pulse">⚙️</div>
+        <h2 className="text-xl font-bold mb-1">Analyzing your game</h2>
+        <p className="text-zinc-400 text-sm mb-6">Stockfish is reviewing every move...</p>
+        <div className="w-full bg-zinc-700 rounded-full h-3 mb-2">
+          <div
+            className="bg-amber-500 h-3 rounded-full transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="text-zinc-400 text-sm font-mono">{progress}%</p>
+      </div>
+    </div>
+  );
+}
+
+// Vertical win bar alongside the board
+function VerticalWinBar({ moves, currentIndex, userColor }: {
+  moves: AnalyzedMove[];
+  currentIndex: number;
+  userColor: 'w' | 'b';
+}) {
+  const move = currentIndex >= 0 ? moves[currentIndex] : null;
+  const evalScore = move?.evalAfter ?? 0;
+  const clampedEval = Math.max(-600, Math.min(600, evalScore));
+  // whitePercent = how much white is winning (top = white side)
+  const whitePercent = 50 + (clampedEval / 600) * 50;
+
+  // If user is black, flip so their color is at bottom
+  const topColor = userColor === 'w' ? '#fff' : '#1a1a1a';
+  const bottomColor = userColor === 'w' ? '#1a1a1a' : '#fff';
+  const topLabel = userColor === 'w' ? '♔' : '♚';
+  const bottomLabel = userColor === 'w' ? '♚' : '♔';
+
+  // The "winning" bar fills from the user's side
+  const userWinPercent = userColor === 'w' ? whitePercent : (100 - whitePercent);
+
+  return (
+    <div className="flex flex-col items-center gap-1 h-full py-1 select-none">
+      <span className="text-xs text-zinc-500">{topLabel}</span>
+      <div className="flex-1 w-4 bg-zinc-700 rounded-full overflow-hidden flex flex-col relative">
+        {/* White section always at top */}
+        <div
+          className="w-full bg-white transition-all duration-500"
+          style={{ height: `${whitePercent}%` }}
+        />
+        {/* Black fills the rest */}
+        <div className="w-full bg-zinc-900 flex-1" />
+      </div>
+      <span className="text-xs text-zinc-500">{bottomLabel}</span>
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
 export default function AnalyzePage() {
   const [game, setGame] = useState<ParsedGame | null>(null);
-  const [currentMoveIndex, setCurrentMoveIndex] = useState(-1); // -1 = starting position
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(-1);
   const [moves, setMoves] = useState<AnalyzedMove[]>([]);
   const [selectedMove, setSelectedMove] = useState<AnalyzedMove | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -123,6 +193,9 @@ export default function AnalyzePage() {
   const [showUpgradeGate, setShowUpgradeGate] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [pendingPGN, setPendingPGN] = useState<string | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [userColor, setUserColor] = useState<'w' | 'b'>('w');
   const moveListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -132,8 +205,7 @@ export default function AnalyzePage() {
       if (currentUser) {
         setUser(currentUser);
         setUserCount(getUserAnalysisCount(currentUser.id));
-        const pro = await isUserPro(currentUser.id);
-        setIsPro(pro);
+        setIsPro(await isUserPro(currentUser.id));
       } else {
         setUser(null);
         setIsPro(false);
@@ -146,41 +218,31 @@ export default function AnalyzePage() {
     ? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
     : moves[currentMoveIndex]?.fenAfter || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+  // Step 1: PGN loaded → check gates → show color picker
   const handlePGNLoaded = useCallback(async (pgn: string) => {
-    // === GATING LOGIC ===
     if (isPro) {
-      // Pro users: unlimited, fall through
+      // fall through
     } else if (!user) {
-      // Not logged in
-      if (guestCount >= GUEST_ANALYSIS_LIMIT) {
-        setShowSignInModal(true);
-        return;
-      }
-      // Allow — will increment below
+      if (guestCount >= GUEST_ANALYSIS_LIMIT) { setShowSignInModal(true); return; }
     } else {
-      // Logged in, free user
-      if (userCount >= FREE_ANALYSIS_LIMIT) {
-        setShowUpgradeGate(true);
-        return;
-      }
-      // Allow — will increment below
+      if (userCount >= FREE_ANALYSIS_LIMIT) { setShowUpgradeGate(true); return; }
     }
+    setPendingPGN(pgn);
+    setShowColorPicker(true);
+  }, [isPro, user, guestCount, userCount]);
 
-    const parsed = parsePGN(pgn);
-    if (!parsed) {
-      alert('Invalid PGN — please check your game notation.');
-      return;
-    }
+  // Step 2: Color picked → run analysis
+  const handleColorSelected = useCallback(async (color: 'w' | 'b') => {
+    setUserColor(color);
+    setShowColorPicker(false);
+    if (!pendingPGN) return;
 
-    // Increment the appropriate counter
+    const parsed = parsePGN(pendingPGN);
+    if (!parsed) { alert('Invalid PGN — please check your game notation.'); return; }
+
     if (!isPro) {
-      if (!user) {
-        const newCount = incrementGuestCount();
-        setGuestCount(newCount);
-      } else {
-        const newCount = incrementUserCount(user.id);
-        setUserCount(newCount);
-      }
+      if (!user) { const c = incrementGuestCount(); setGuestCount(c); }
+      else { const c = incrementUserCount(user.id); setUserCount(c); }
     }
 
     setGame(parsed);
@@ -191,12 +253,9 @@ export default function AnalyzePage() {
     setAnalysisProgress(0);
     setAnalysisComplete(false);
 
-    // Run Stockfish analysis on all positions
     try {
       const { analyzePosition } = await import('@/lib/stockfish');
       const analyzedMoves = [...parsed.moves];
-
-      // Single pass — one Stockfish call per position (gets both eval AND bestMove)
       const results: Awaited<ReturnType<typeof analyzePosition>>[] = [];
 
       for (let i = 0; i < analyzedMoves.length; i++) {
@@ -209,24 +268,20 @@ export default function AnalyzePage() {
         }
       }
 
-      // Get eval after last move
       let lastEval = 0;
       try {
         const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 16);
         lastEval = lastResult.eval;
       } catch {}
 
-      // Build analyzedMoves with win%
       if (analyzedMoves.length > 0) {
         for (let i = 0; i < analyzedMoves.length; i++) {
           const evalBefore = results[i].eval;
           const evalAfter = i < analyzedMoves.length - 1 ? results[i + 1].eval : lastEval;
-
           let mate: number | null = null;
           if (Math.abs(evalAfter) >= 900) {
             mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
           }
-
           analyzedMoves[i] = {
             ...analyzedMoves[i],
             evalBefore,
@@ -247,7 +302,7 @@ export default function AnalyzePage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isPro, user, guestCount, userCount]);
+  }, [pendingPGN, isPro, user]);
 
   const handleMoveSelect = useCallback((index: number) => {
     setCurrentMoveIndex(index);
@@ -257,55 +312,51 @@ export default function AnalyzePage() {
   const goToStart = () => { setCurrentMoveIndex(-1); setSelectedMove(null); };
   const goToPrev = () => {
     if (currentMoveIndex > -1) {
-      const newIdx = currentMoveIndex - 1;
-      setCurrentMoveIndex(newIdx);
-      setSelectedMove(newIdx >= 0 ? moves[newIdx] : null);
+      const i = currentMoveIndex - 1;
+      setCurrentMoveIndex(i);
+      setSelectedMove(i >= 0 ? moves[i] : null);
     }
   };
   const goToNext = () => {
     if (currentMoveIndex < moves.length - 1) {
-      const newIdx = currentMoveIndex + 1;
-      setCurrentMoveIndex(newIdx);
-      setSelectedMove(moves[newIdx]);
+      const i = currentMoveIndex + 1;
+      setCurrentMoveIndex(i);
+      setSelectedMove(moves[i]);
     }
   };
   const goToEnd = () => {
-    const lastIdx = moves.length - 1;
-    setCurrentMoveIndex(lastIdx);
-    setSelectedMove(lastIdx >= 0 ? moves[lastIdx] : null);
+    const i = moves.length - 1;
+    setCurrentMoveIndex(i);
+    setSelectedMove(i >= 0 ? moves[i] : null);
   };
 
   const lastMove = currentMoveIndex >= 0 ? moves[currentMoveIndex] : null;
-
   const whiteName = game?.headers['White'] || 'White';
   const blackName = game?.headers['Black'] || 'Black';
 
   const handleStartReview = useCallback(() => {
-    // Jump to first move and scroll move list into view
-    if (moves.length > 0) {
-      setCurrentMoveIndex(0);
-      setSelectedMove(moves[0]);
-    }
+    if (moves.length > 0) { setCurrentMoveIndex(0); setSelectedMove(moves[0]); }
     moveListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [moves]);
 
-  // Compute remaining analyses hint for the upload screen
   const remainingHint = (() => {
     if (isPro) return null;
     if (!user) {
-      const remaining = GUEST_ANALYSIS_LIMIT - guestCount;
-      if (remaining <= 0) return null; // modal will show instead
-      return `${remaining} free guest ${remaining === 1 ? 'analysis' : 'analyses'} remaining · Sign in for ${FREE_ANALYSIS_LIMIT}/month`;
+      const r = GUEST_ANALYSIS_LIMIT - guestCount;
+      if (r <= 0) return null;
+      return `${r} free guest ${r === 1 ? 'analysis' : 'analyses'} remaining · Sign in for ${FREE_ANALYSIS_LIMIT}/month`;
     }
-    const remaining = FREE_ANALYSIS_LIMIT - userCount;
-    if (remaining <= 0) return null;
-    return `${remaining} free ${remaining === 1 ? 'analysis' : 'analyses'} remaining this month`;
+    const r = FREE_ANALYSIS_LIMIT - userCount;
+    if (r <= 0) return null;
+    return `${r} free ${r === 1 ? 'analysis' : 'analyses'} remaining this month`;
   })();
 
   return (
     <main className="min-h-screen flex flex-col">
-      {/* Sign-in modal */}
+      {/* Modals */}
       {showSignInModal && <SignInModal onClose={() => setShowSignInModal(false)} />}
+      {showColorPicker && <ColorPickerModal onSelect={handleColorSelected} />}
+      {isAnalyzing && <AnalyzingOverlay progress={analysisProgress} />}
 
       {/* Nav */}
       <nav className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between shrink-0">
@@ -314,9 +365,11 @@ export default function AnalyzePage() {
           <span className="font-bold tracking-tight">Obi-Chess</span>
         </Link>
         {game && (
-          <div className="text-sm text-zinc-400">
-            {game.headers['White']} vs {game.headers['Black']}
-            {game.headers['Event'] && <span className="ml-2 text-zinc-600">— {game.headers['Event']}</span>}
+          <div className="text-sm text-zinc-400 flex items-center gap-3">
+            <span>{game.headers['White']} vs {game.headers['Black']}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${userColor === 'w' ? 'bg-white/10 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
+              You: {userColor === 'w' ? '♔ White' : '♚ Black'}
+            </span>
           </div>
         )}
         <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
@@ -326,30 +379,15 @@ export default function AnalyzePage() {
 
       <div className="flex-1 flex overflow-hidden">
         {showUpgradeGate ? (
-          // Upgrade prompt for free users who hit limit
           <div className="flex-1 flex items-center justify-center p-8">
             <div className="max-w-md w-full text-center">
               <div className="text-5xl mb-4">🔒</div>
               <h2 className="text-2xl font-bold mb-2">Monthly limit reached</h2>
-              <p className="text-zinc-400 mb-2">
-                Free accounts get {FREE_ANALYSIS_LIMIT} game analyses per month.
-              </p>
-              <p className="text-zinc-400 mb-8">
-                Upgrade to Pro for unlimited analyses, AI voice coaching, and more.
-              </p>
+              <p className="text-zinc-400 mb-2">Free accounts get {FREE_ANALYSIS_LIMIT} game analyses per month.</p>
+              <p className="text-zinc-400 mb-8">Upgrade to Pro for unlimited analyses, AI voice coaching, and more.</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Link
-                  href="/pricing"
-                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-6 py-3 rounded-xl transition-colors"
-                >
-                  Upgrade to Pro →
-                </Link>
-                <button
-                  onClick={() => setShowUpgradeGate(false)}
-                  className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-6 py-3 rounded-xl transition-colors"
-                >
-                  Maybe later
-                </button>
+                <Link href="/pricing" className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-6 py-3 rounded-xl">Upgrade to Pro →</Link>
+                <button onClick={() => setShowUpgradeGate(false)} className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-6 py-3 rounded-xl">Maybe later</button>
               </div>
             </div>
           </div>
@@ -360,9 +398,7 @@ export default function AnalyzePage() {
               {!isPro && remainingHint && (
                 <div className="mb-4 text-center">
                   <span className="text-sm text-zinc-500">
-                    {remainingHint}
-                    {' · '}
-                    <Link href="/pricing" className="text-amber-400 hover:underline">Upgrade for unlimited</Link>
+                    {remainingHint} · <Link href="/pricing" className="text-amber-400 hover:underline">Upgrade for unlimited</Link>
                   </span>
                 </div>
               )}
@@ -370,32 +406,34 @@ export default function AnalyzePage() {
             </div>
           </div>
         ) : (
-          // Analysis layout
-          <div className="flex-1 flex gap-0 overflow-hidden">
-            {/* Left: Board + controls */}
-            <div className="flex flex-col items-center justify-start p-6 gap-4 min-w-0 flex-1">
-              {isAnalyzing && (
-                <div className="w-full max-w-[560px] bg-zinc-900 rounded-lg p-3 text-sm text-zinc-400 flex items-center gap-3">
-                  <div className="w-full bg-zinc-700 rounded-full h-1.5">
-                    <div
-                      className="bg-amber-500 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${analysisProgress}%` }}
-                    />
-                  </div>
-                  <span className="shrink-0">Analyzing {analysisProgress}%</span>
-                </div>
-              )}
+          // ── Main analysis layout: LEFT | MOVES | RIGHT ──
+          <div className="flex-1 flex overflow-hidden">
 
-              <div className="w-full max-w-[560px]">
-                <ChessBoard
-                  fen={currentFen}
-                  lastMove={lastMove}
-                  bestMove={lastMove?.bestMove}
-                  showArrows={true}
-                />
+            {/* LEFT: Board + win bar + controls */}
+            <div className="flex flex-col items-center justify-start p-4 gap-3 w-1/2 min-w-0">
+              {/* Board row: win bar + chessboard */}
+              <div className="flex gap-3 w-full items-center justify-center">
+                {/* Vertical win bar */}
+                <div style={{ height: 480, width: 20 }} className="shrink-0">
+                  <VerticalWinBar
+                    moves={moves}
+                    currentIndex={currentMoveIndex}
+                    userColor={userColor}
+                  />
+                </div>
+
+                {/* Chessboard */}
+                <div className="flex-1 max-w-[480px]">
+                  <ChessBoard
+                    fen={currentFen}
+                    lastMove={lastMove}
+                    bestMove={lastMove?.bestMove}
+                    showArrows={true}
+                  />
+                </div>
               </div>
 
-              {/* Navigation controls */}
+              {/* Nav controls */}
               <div className="flex items-center gap-2">
                 <button onClick={goToStart} className="chess-nav-btn" title="Start">⏮</button>
                 <button onClick={goToPrev} className="chess-nav-btn" title="Previous">◀</button>
@@ -405,17 +443,10 @@ export default function AnalyzePage() {
                 <button onClick={goToNext} className="chess-nav-btn" title="Next">▶</button>
                 <button onClick={goToEnd} className="chess-nav-btn" title="End">⏭</button>
               </div>
-
-              {/* Eval chart removed from here — now in right panel */}
-
-              {/* Chat panel below board */}
-              <div className="w-full max-w-[560px]">
-                <ChatPanel currentFen={currentFen} />
-              </div>
             </div>
 
-            {/* Center: Move list */}
-            <div ref={moveListRef} className="w-56 border-l border-r border-zinc-800 overflow-y-auto shrink-0">
+            {/* CENTER: Move list */}
+            <div ref={moveListRef} className="w-44 border-l border-r border-zinc-800 overflow-y-auto shrink-0">
               <MoveList
                 moves={moves}
                 currentIndex={currentMoveIndex}
@@ -423,9 +454,9 @@ export default function AnalyzePage() {
               />
             </div>
 
-            {/* Right: EvalChart always on top, then GameSummary or AnalysisPanel */}
-            <div className="w-80 overflow-y-auto shrink-0 flex flex-col">
-              {/* EvalChart — always visible once we have data */}
+            {/* RIGHT: Eval chart + Coach panel (unified) */}
+            <div className="flex flex-col w-1/2 min-w-0 overflow-hidden">
+              {/* EvalChart — top of right panel */}
               {moves.some(m => m.winPercentAfter !== undefined) && (
                 <div className="p-3 pb-0 shrink-0">
                   <EvalChart
@@ -438,22 +469,25 @@ export default function AnalyzePage() {
                 </div>
               )}
 
-              {/* Below chart: GameSummary stats OR AnalysisPanel */}
-              {analysisComplete && !selectedMove ? (
-                <GameSummary
-                  moves={moves}
-                  whiteName={whiteName ?? 'White'}
-                  blackName={blackName ?? 'Black'}
-                  currentMoveIndex={currentMoveIndex}
-                  onSelectMove={handleMoveSelect}
-                  onStartReview={handleStartReview}
-                />
-              ) : (
-                <AnalysisPanel
-                  move={selectedMove}
-                  currentFen={currentFen}
-                />
-              )}
+              {/* Game summary OR coach panel */}
+              <div className="flex-1 overflow-hidden">
+                {analysisComplete && !selectedMove ? (
+                  <GameSummary
+                    moves={moves}
+                    whiteName={whiteName ?? 'White'}
+                    blackName={blackName ?? 'Black'}
+                    currentMoveIndex={currentMoveIndex}
+                    onSelectMove={handleMoveSelect}
+                    onStartReview={handleStartReview}
+                  />
+                ) : (
+                  <CoachPanel
+                    move={selectedMove}
+                    currentFen={currentFen}
+                    userColor={userColor}
+                  />
+                )}
+              </div>
             </div>
           </div>
         )}
