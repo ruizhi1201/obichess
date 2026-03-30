@@ -1,91 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Use Lichess Cloud Eval API — free, no key needed, real Stockfish at high depth
+// Docs: https://lichess.org/api#tag/Analysis/operation/apiCloudEval
+
 export async function POST(req: NextRequest) {
-  const { fen, depth = 16 } = await req.json();
+  const { fen } = await req.json();
 
   if (!fen) {
     return NextResponse.json({ error: 'FEN required' }, { status: 400 });
   }
 
   try {
-    const result = await analyzeWithStockfish(fen, depth);
+    const result = await analyzeWithLichess(fen);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('[Stockfish API] Error:', error);
+    console.error('[Analyze API] Error:', error);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
   }
 }
 
-async function analyzeWithStockfish(
-  fen: string,
-  depth: number
-): Promise<{
+async function analyzeWithLichess(fen: string): Promise<{
   bestMove: string;
   eval: number;
   mate: number | null;
   depth: number;
 }> {
-  return new Promise((resolve, reject) => {
-    // Use stockfish-18-asm.js (no WASM needed, pure ASM.js)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Stockfish = require('stockfish/bin/stockfish-18-asm.js');
+  const encodedFen = encodeURIComponent(fen);
+  const url = `https://lichess.org/api/cloud-eval?fen=${encodedFen}&multiPv=1`;
 
-    let bestMove = '';
-    let evalScore = 0;
-    let mateScore: number | null = null;
-    let bestDepth = 0;
-
-    const timeout = setTimeout(() => {
-      reject(new Error('Stockfish timeout'));
-    }, 15000);
-
-    Stockfish()({
-      locateFile: (f: string) => f,
-      listener: (line: string) => {
-        if (typeof line !== 'string') return;
-
-        if (line.startsWith('info depth')) {
-          const depthMatch = line.match(/depth (\d+)/);
-          const scoreMatch = line.match(/score cp (-?\d+)/);
-          const mateMatch = line.match(/score mate (-?\d+)/);
-
-          const msgDepth = depthMatch ? parseInt(depthMatch[1]) : 0;
-          if (msgDepth > bestDepth) {
-            bestDepth = msgDepth;
-            if (scoreMatch) {
-              evalScore = parseInt(scoreMatch[1]);
-              mateScore = null;
-            } else if (mateMatch) {
-              mateScore = parseInt(mateMatch[1]);
-              evalScore = mateScore > 0 ? 30000 - mateScore : -30000 - mateScore;
-            }
-          }
-        }
-
-        if (line.startsWith('bestmove')) {
-          clearTimeout(timeout);
-          bestMove = line.split(' ')[1] || '';
-          resolve({
-            bestMove,
-            eval: evalScore,
-            mate: mateScore,
-            depth: bestDepth,
-          });
-        }
-      },
-    }).then((engine: { ccall: (cmd: string, ...args: unknown[]) => unknown }) => {
-      function sendCmd(cmd: string) {
-        engine.ccall('command', null, ['string'], [cmd], {
-          async: /^go\b/.test(cmd),
-        });
-      }
-      sendCmd('uci');
-      sendCmd('isready');
-      sendCmd(`position fen ${fen}`);
-      sendCmd(`go depth ${depth}`);
-    }).catch((err: Error) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
+  const response = await fetch(url, {
+    headers: { 'Accept': 'application/json' },
+    next: { revalidate: 3600 }, // cache for 1 hour
   });
+
+  if (!response.ok) {
+    throw new Error(`Lichess API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  const pv = data.pvs?.[0];
+  if (!pv) throw new Error('No analysis returned');
+
+  // Best move is first move in the PV line (UCI notation e.g. "e2e4 e7e5 ...")
+  const bestMove = pv.moves?.split(' ')[0] || '';
+
+  // cp is centipawns from white's perspective
+  const evalScore: number = pv.cp ?? (pv.mate != null ? (pv.mate > 0 ? 30000 - pv.mate : -30000 - pv.mate) : 0);
+  const mateScore: number | null = pv.mate ?? null;
+
+  console.log(`[Lichess Eval] FEN: ${fen.substring(0, 30)}... → cp=${evalScore}, bestMove=${bestMove}, depth=${data.depth}`);
+
+  return {
+    bestMove,
+    eval: evalScore,
+    mate: mateScore,
+    depth: data.depth ?? 0,
+  };
 }
