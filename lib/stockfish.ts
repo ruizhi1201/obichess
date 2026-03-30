@@ -1,114 +1,47 @@
 'use client';
 
-// Stockfish.js wrapper — runs in browser via Web Worker
-// Uses stockfish.js from CDN via blob URL (bypasses cross-origin worker restriction)
+// Stockfish analysis — server-side via API route
+// Browser-side WASM approach was dropped (107MB WASM file too large for GitHub).
+// All analysis is now performed server-side using stockfish-18-asm.js (Node.js, no WASM).
 
 export interface StockfishResult {
   bestMove: string; // UCI notation e.g. "e2e4"
   eval: number;     // centipawns from white's perspective
   depth: number;
-  pv: string;       // principal variation
-}
-
-let worker: Worker | null = null;
-
-async function getWorker(): Promise<Worker> {
-  if (worker) return worker;
-
-  // Fetch the stockfish script and create a blob worker (bypasses CORS for workers)
-  const response = await fetch('/stockfish/stockfish.js');
-  const scriptText = await response.text();
-  const blob = new Blob([scriptText], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-
-  worker = new Worker(blobUrl);
-
-  // Wait for ready
-  await new Promise<void>((resolve) => {
-    const handler = (e: MessageEvent) => {
-      if (e.data === 'readyok') {
-        worker!.removeEventListener('message', handler);
-        resolve();
-      }
-    };
-    worker!.addEventListener('message', handler);
-    worker!.postMessage('uci');
-    worker!.postMessage('isready');
-  });
-
-  return worker;
+  mate: number | null; // mate in N moves (null if not a forced mate)
+  pv?: string;      // principal variation (optional, not returned by API)
 }
 
 export async function analyzePosition(
   fen: string,
-  depth: number = 18
+  depth: number = 16
 ): Promise<StockfishResult> {
-  const w = await getWorker();
-
-  return new Promise((resolve, reject) => {
-    let bestMove = '';
-    let evalScore = 0;
-    let pvLine = '';
-    let bestDepth = 0;
-
-    const timeout = setTimeout(() => {
-      reject(new Error('Stockfish timeout'));
-    }, 15000);
-
-    const handler = (e: MessageEvent) => {
-      const msg: string = e.data;
-
-      if (msg.startsWith('info depth')) {
-        const depthMatch = msg.match(/depth (\d+)/);
-        const scoreMatch = msg.match(/score cp (-?\d+)/);
-        const mateMatch = msg.match(/score mate (-?\d+)/);
-        const pvMatch = msg.match(/ pv (.+)/);
-
-        const msgDepth = depthMatch ? parseInt(depthMatch[1]) : 0;
-
-        if (msgDepth > bestDepth) {
-          bestDepth = msgDepth;
-          if (scoreMatch) {
-            evalScore = parseInt(scoreMatch[1]);
-          } else if (mateMatch) {
-            const mateIn = parseInt(mateMatch[1]);
-            evalScore = mateIn > 0 ? 1000 - mateIn : -1000 + Math.abs(mateIn);
-          }
-          if (pvMatch) {
-            pvLine = pvMatch[1].split(' ')[0];
-          }
-        }
-      }
-
-      if (msg.startsWith('bestmove')) {
-        clearTimeout(timeout);
-        w.removeEventListener('message', handler);
-
-        const parts = msg.split(' ');
-        bestMove = parts[1] || pvLine;
-
-        // Debug logging — verify Stockfish is actually running
-        console.log(`[Stockfish] FEN: ${fen.substring(0, 30)}... → cp=${evalScore}, bestMove=${bestMove}, depth=${bestDepth}`);
-
-        resolve({
-          bestMove,
-          eval: evalScore,
-          depth: bestDepth,
-          pv: pvLine,
-        });
-      }
-    };
-
-    w.addEventListener('message', handler);
-
-    w.postMessage(`position fen ${fen}`);
-    w.postMessage(`go depth ${depth}`);
+  const response = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fen, depth }),
   });
+
+  if (!response.ok) {
+    throw new Error(`Stockfish analysis failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  console.log(
+    `[Stockfish] FEN: ${fen.substring(0, 30)}... → cp=${data.eval}, bestMove=${data.bestMove}, mate=${data.mate}, depth=${data.depth}`
+  );
+
+  return {
+    bestMove: data.bestMove,
+    eval: data.eval,
+    depth: data.depth,
+    mate: data.mate ?? null,
+    pv: data.bestMove, // use bestMove as pv fallback
+  };
 }
 
+// No-op: no worker to terminate in server-side mode
 export function terminateWorker() {
-  if (worker) {
-    worker.terminate();
-    worker = null;
-  }
+  // Nothing to do — analysis runs server-side
 }

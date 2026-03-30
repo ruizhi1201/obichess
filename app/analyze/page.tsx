@@ -205,7 +205,7 @@ export default function AnalyzePage() {
           results.push(result);
           setAnalysisProgress(Math.round(((i + 1) / (analyzedMoves.length + 1)) * 100));
         } catch {
-          results.push({ bestMove: '', eval: 0, depth: 0, pv: '' });
+          results.push({ bestMove: '', eval: 0, depth: 0, pv: '', mate: null });
         }
       }
 
