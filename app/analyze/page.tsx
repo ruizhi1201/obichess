@@ -407,7 +407,7 @@ export default function AnalyzePage() {
           </div>
         ) : (
           // ── Main analysis layout: LEFT | MOVES | RIGHT ──
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-hidden h-full">
 
             {/* LEFT: Board + win bar + controls */}
             <div className="flex flex-col items-center justify-start p-4 gap-3 w-1/2 min-w-0">
@@ -455,7 +455,7 @@ export default function AnalyzePage() {
             </div>
 
             {/* RIGHT: Eval chart + Coach panel (unified) */}
-            <div className="flex flex-col w-1/2 min-w-0 overflow-hidden">
+            <div className="flex flex-col w-1/2 min-w-0 overflow-hidden h-full border-l border-zinc-800">
               {/* EvalChart — top of right panel */}
               {moves.some(m => m.winPercentAfter !== undefined) && (
                 <div className="p-3 pb-0 shrink-0">
@@ -470,7 +470,7 @@ export default function AnalyzePage() {
               )}
 
               {/* Game summary OR coach panel */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0">
                 {analysisComplete && !selectedMove ? (
                   <GameSummary
                     moves={moves}

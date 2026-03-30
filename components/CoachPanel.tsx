@@ -128,7 +128,7 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
   const noMoveSelected = !move;
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950">
+    <div className="flex flex-col h-full min-h-0 bg-zinc-950">
       {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 shrink-0">
         <span className="text-lg">🤖</span>
