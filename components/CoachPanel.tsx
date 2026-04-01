@@ -59,6 +59,7 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
           bestMoveSan: move.bestMoveSan,
           classification: move.classification,
           userColor,
+          moveColor: move.color,
         }),
       });
       const data = await res.json();
@@ -111,7 +112,7 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, fen: currentFen, history: messages }),
+        body: JSON.stringify({ message: text, fen: currentFen, history: messages, userColor }),
       });
       const data = await res.json();
       setMessages([...newHistory, {
