@@ -336,7 +336,10 @@ export default function AnalyzePage() {
 
   const handleStartReview = useCallback(() => {
     if (moves.length > 0) { setCurrentMoveIndex(0); setSelectedMove(moves[0]); }
-    moveListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Scroll move list to top internally — don't use scrollIntoView which moves the page
+    if (moveListRef.current) {
+      moveListRef.current.scrollTop = 0;
+    }
   }, [moves]);
 
   const remainingHint = (() => {
@@ -409,8 +412,8 @@ export default function AnalyzePage() {
           // ── Main analysis layout: LEFT | MOVES | RIGHT ──
           <div className="flex-1 flex overflow-hidden h-full">
 
-            {/* LEFT: Board + win bar + controls */}
-            <div className="flex flex-col items-center justify-start p-4 gap-3 w-1/2 min-w-0">
+            {/* LEFT: Board + win bar + controls — FIXED, never scrolls */}
+            <div className="flex flex-col items-center justify-start p-4 gap-3 w-1/2 min-w-0 overflow-hidden flex-shrink-0">
               {/* Board row: win bar + chessboard */}
               <div className="flex gap-3 w-full items-center justify-center">
                 {/* Vertical win bar */}

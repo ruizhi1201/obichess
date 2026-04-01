@@ -20,11 +20,14 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
   const [chatLoading, setChatLoading] = useState(false);
   const [lastMoveSan, setLastMoveSan] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom — scroll ONLY within the chat container, never the page
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
   }, [messages, explanation, explanationLoading]);
 
   // Fetch explanation when move changes
@@ -155,8 +158,8 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
         )}
       </div>
 
-      {/* Scrollable message area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Scrollable message area — overflow scoped here, never escapes to parent */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {noMoveSelected ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-zinc-600 py-12">
             <div className="text-4xl mb-3">🎯</div>
@@ -229,6 +232,7 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
             ))}
 
             {/* Chat loading */}
+            {/* Scroll anchor — no longer uses scrollIntoView which escapes containers */}
             {chatLoading && (
               <div className="flex gap-2">
                 <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center text-xs shrink-0">O</div>
@@ -243,7 +247,7 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
             )}
           </>
         )}
-        <div ref={messagesEndRef} />
+        <div />
       </div>
 
       {/* Input area — always at bottom */}
