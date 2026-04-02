@@ -14,6 +14,10 @@ export async function POST(req: NextRequest) {
       classification,
       userColor,
       moveColor,
+      playerStep,
+      playerUscfEquivalent,
+      playerLabel,
+      focusAreas,
     } = await req.json();
 
     if (!fenBefore || !moveSan) {
@@ -59,6 +63,11 @@ export async function POST(req: NextRequest) {
     }
 
     prompt += ` Be honest but encouraging. Keep it to 2-3 sentences. Never suggest illegal moves.`;
+
+    if (playerStep && playerLabel && focusAreas && Array.isArray(focusAreas)) {
+      const uscfStr = playerUscfEquivalent !== undefined ? ` (≈${playerUscfEquivalent} USCF)` : '';
+      prompt += `\n\nPlayer skill context: The player is rated Step ${playerStep} — ${playerLabel}${uscfStr}. At this level, focus your explanation on: ${focusAreas.join(', ')}. Keep explanations targeted to the player's skill level — don't overwhelm a beginner with master-level concepts.`;
+    }
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',

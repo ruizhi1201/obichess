@@ -44,11 +44,15 @@ async function getLichessEval(fen: string): Promise<{
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, fen, history, userColor } = await req.json() as {
+    const { message, fen, history, userColor, playerStep, playerUscfEquivalent, playerLabel, focusAreas } = await req.json() as {
       message: string;
       fen: string;
       history: ChatMessage[];
       userColor?: 'w' | 'b';
+      playerStep?: number;
+      playerUscfEquivalent?: number;
+      playerLabel?: string;
+      focusAreas?: string[];
     };
 
     if (!message || !fen) {
@@ -134,7 +138,13 @@ Base your entire response on this engine data.`;
       }
     }
 
-    const systemWithContext = `${COACH_SYSTEM_PROMPT}
+    let playerSkillContext = '';
+    if (playerStep && playerLabel && focusAreas && Array.isArray(focusAreas)) {
+      const uscfStr = playerUscfEquivalent !== undefined ? ` (≈${playerUscfEquivalent} USCF)` : '';
+      playerSkillContext = `\n\n=== PLAYER SKILL LEVEL ===\nThe player is rated Step ${playerStep} — ${playerLabel}${uscfStr}. Focus your explanations on: ${focusAreas.join(', ')}. Keep coaching targeted to this skill level — don't overwhelm a beginner with master-level concepts.`;
+    }
+
+    const systemWithContext = `${COACH_SYSTEM_PROMPT}${playerSkillContext}
 
 === CRITICAL RULES — NEVER BREAK THESE ===
 1. The user is playing as ${colorName}. Always analyze from their perspective.

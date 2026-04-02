@@ -3,14 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { type AnalyzedMove, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
 import { type ChatMessage } from '@/app/api/chat/route';
+import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
 
 interface CoachPanelProps {
   move: AnalyzedMove | null;
   currentFen: string;
   userColor: 'w' | 'b';
+  playerProfile?: PlayerProfile | null;
 }
 
-export default function CoachPanel({ move, currentFen, userColor }: CoachPanelProps) {
+export default function CoachPanel({ move, currentFen, userColor, playerProfile }: CoachPanelProps) {
   const [explanation, setExplanation] = useState<string>('');
   const [explanationLoading, setExplanationLoading] = useState(false);
   const [ttsLoading, setTtsLoading] = useState(false);
@@ -48,6 +50,17 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
     if (!move) return;
     setExplanationLoading(true);
     setExplanation('');
+    const skillPayload = playerProfile
+      ? (() => {
+          const s = getSkillStep(playerProfile.uscfEquivalent);
+          return {
+            playerStep: s.step,
+            playerUscfEquivalent: playerProfile.uscfEquivalent,
+            playerLabel: s.label,
+            focusAreas: s.focusAreas,
+          };
+        })()
+      : {};
     try {
       const res = await fetch('/api/explain', {
         method: 'POST',
@@ -63,6 +76,7 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
           classification: move.classification,
           userColor,
           moveColor: move.color,
+          ...skillPayload,
         }),
       });
       const data = await res.json();
@@ -111,11 +125,22 @@ export default function CoachPanel({ move, currentFen, userColor }: CoachPanelPr
     setInput('');
     setChatLoading(true);
 
+    const skillPayload = playerProfile
+      ? (() => {
+          const s = getSkillStep(playerProfile.uscfEquivalent);
+          return {
+            playerStep: s.step,
+            playerUscfEquivalent: playerProfile.uscfEquivalent,
+            playerLabel: s.label,
+            focusAreas: s.focusAreas,
+          };
+        })()
+      : {};
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, fen: currentFen, history: messages, userColor }),
+        body: JSON.stringify({ message: text, fen: currentFen, history: messages, userColor, ...skillPayload }),
       });
       const data = await res.json();
       setMessages([...newHistory, {

@@ -9,8 +9,10 @@ import CoachPanel from '@/components/CoachPanel';
 import PGNUploader from '@/components/PGNUploader';
 import EvalChart from '@/components/EvalChart';
 import GameSummary from '@/components/GameSummary';
+import PlayerProfileModal from '@/components/PlayerProfileModal';
 import { supabase, isUserPro } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
+import { type PlayerProfile } from '@/lib/player-profiles';
 
 const ChessBoard = dynamic(() => import('@/components/ChessBoard'), { ssr: false });
 
@@ -89,7 +91,11 @@ function SignInModal({ onClose }: { onClose: () => void }) {
 }
 
 // Ask which color the user played
-function ColorPickerModal({ onSelect }: { onSelect: (color: 'w' | 'b') => void }) {
+function ColorPickerModal({ onSelect, whiteName, blackName }: {
+  onSelect: (color: 'w' | 'b') => void;
+  whiteName: string;
+  blackName: string;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl">
@@ -104,14 +110,14 @@ function ColorPickerModal({ onSelect }: { onSelect: (color: 'w' | 'b') => void }
             className="flex flex-col items-center gap-2 bg-white hover:bg-zinc-100 text-zinc-900 font-bold px-8 py-5 rounded-2xl transition-colors"
           >
             <span className="text-4xl">♔</span>
-            <span>White</span>
+            <span>{whiteName}</span>
           </button>
           <button
             onClick={() => onSelect('b')}
             className="flex flex-col items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold px-8 py-5 rounded-2xl transition-colors border border-zinc-600"
           >
             <span className="text-4xl">♚</span>
-            <span>Black</span>
+            <span>{blackName}</span>
           </button>
         </div>
       </div>
@@ -196,6 +202,10 @@ export default function AnalyzePage() {
   const [pendingPGN, setPendingPGN] = useState<string | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [userColor, setUserColor] = useState<'w' | 'b'>('w');
+  const [playerProfile, setPlayerProfile] = useState<PlayerProfile | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [pendingWhiteName, setPendingWhiteName] = useState('White');
+  const [pendingBlackName, setPendingBlackName] = useState('Black');
   const moveListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -218,7 +228,7 @@ export default function AnalyzePage() {
     ? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
     : moves[currentMoveIndex]?.fenAfter || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-  // Step 1: PGN loaded → check gates → show color picker
+  // Step 1: PGN loaded → check gates → show profile modal
   const handlePGNLoaded = useCallback(async (pgn: string) => {
     if (isPro) {
       // fall through
@@ -228,8 +238,24 @@ export default function AnalyzePage() {
       if (userCount >= FREE_ANALYSIS_LIMIT) { setShowUpgradeGate(true); return; }
     }
     setPendingPGN(pgn);
-    setShowColorPicker(true);
+    setShowProfileModal(true);
   }, [isPro, user, guestCount, userCount]);
+
+  // Step 1b: Profile selected → show color picker (extract names from PGN)
+  const handleProfileSelected = useCallback((profile: PlayerProfile) => {
+    setPlayerProfile(profile);
+    setShowProfileModal(false);
+    // Parse PGN headers to get player names for the color picker
+    if (pendingPGN) {
+      const parsed = parsePGN(pendingPGN);
+      const wName = parsed?.headers['White'] || 'White';
+      const bName = parsed?.headers['Black'] || 'Black';
+      // Store names for color picker
+      setPendingWhiteName(wName);
+      setPendingBlackName(bName);
+    }
+    setShowColorPicker(true);
+  }, [pendingPGN]);
 
   // Step 2: Color picked → run analysis
   const handleColorSelected = useCallback(async (color: 'w' | 'b') => {
@@ -358,7 +384,19 @@ export default function AnalyzePage() {
     <main className="min-h-screen flex flex-col">
       {/* Modals */}
       {showSignInModal && <SignInModal onClose={() => setShowSignInModal(false)} />}
-      {showColorPicker && <ColorPickerModal onSelect={handleColorSelected} />}
+      {showProfileModal && (
+        <PlayerProfileModal
+          onSelect={handleProfileSelected}
+          onClose={() => setShowProfileModal(false)}
+        />
+      )}
+      {showColorPicker && (
+        <ColorPickerModal
+          onSelect={handleColorSelected}
+          whiteName={pendingWhiteName}
+          blackName={pendingBlackName}
+        />
+      )}
       {isAnalyzing && <AnalyzingOverlay progress={analysisProgress} />}
 
       {/* Nav */}
@@ -488,6 +526,7 @@ export default function AnalyzePage() {
                     move={selectedMove}
                     currentFen={currentFen}
                     userColor={userColor}
+                    playerProfile={playerProfile}
                   />
                 )}
               </div>
