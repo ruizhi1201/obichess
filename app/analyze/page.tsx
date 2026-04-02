@@ -381,7 +381,7 @@ export default function AnalyzePage() {
   })();
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="h-screen flex flex-col overflow-hidden">
       {/* Modals */}
       {showSignInModal && <SignInModal onClose={() => setShowSignInModal(false)} />}
       {showProfileModal && (
@@ -487,7 +487,7 @@ export default function AnalyzePage() {
             </div>
 
             {/* CENTER: Move list */}
-            <div ref={moveListRef} className="w-44 border-l border-r border-zinc-800 overflow-y-auto shrink-0">
+            <div ref={moveListRef} className="w-44 border-l border-r border-zinc-800 shrink-0 h-full overflow-hidden">
               <MoveList
                 moves={moves}
                 currentIndex={currentMoveIndex}
