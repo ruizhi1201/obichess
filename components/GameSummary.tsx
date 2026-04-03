@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { type AnalyzedMove, type MoveClassification } from '@/lib/chess-utils';
 
 interface GameSummaryProps {
@@ -62,6 +62,7 @@ export default function GameSummary({
 }: GameSummaryProps) {
   const [insights, setInsights] = useState<string | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState(false);
 
   const whiteAcc = calcAccuracy(moves, 'w');
   const blackAcc = calcAccuracy(moves, 'b');
@@ -82,7 +83,9 @@ export default function GameSummary({
   };
 
   const fetchInsights = async () => {
+    if (insightsLoading || insights) return;
     setInsightsLoading(true);
+    setInsightsError(false);
     try {
       const res = await fetch('/api/game-insights', {
         method: 'POST',
@@ -96,16 +99,34 @@ export default function GameSummary({
           whiteName,
           blackName,
           totalMoves: moves.length,
+          moves: moves.map(m => ({
+            moveNumber: m.moveNumber,
+            color: m.color,
+            san: m.san,
+            classification: m.classification ?? 'unknown',
+            bestMoveSan: m.bestMoveSan,
+          })),
         }),
       });
       const data = await res.json();
       if (data.insights) setInsights(data.insights);
+      else setInsightsError(true);
     } catch (e) {
       console.error('Failed to fetch insights:', e);
+      setInsightsError(true);
     } finally {
       setInsightsLoading(false);
     }
   };
+
+  // Auto-load insights when analysis is complete (moves have classifications)
+  useEffect(() => {
+    const hasClassifications = moves.some(m => m.classification && m.classification !== 'unknown');
+    if (hasClassifications && !insights && !insightsLoading) {
+      fetchInsights();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moves]);
 
   const parsedInsights = insights ? parseInsightSections(insights) : null;
 
@@ -164,14 +185,19 @@ export default function GameSummary({
         })}
       </div>
 
-      {/* AI Insights */}
-      {!insights && (
+      {/* AI Insights - auto loads, shows spinner while loading */}
+      {!insights && insightsLoading && (
+        <div className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-4 flex items-center gap-3 text-sm text-zinc-400">
+          <span className="animate-spin text-violet-400">⏳</span>
+          <span>Generating AI insights...</span>
+        </div>
+      )}
+      {!insights && !insightsLoading && insightsError && (
         <button
           onClick={fetchInsights}
-          disabled={insightsLoading}
-          className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-xl transition-colors text-sm"
+          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 px-4 rounded-xl transition-colors text-sm"
         >
-          {insightsLoading ? '⏳ Analyzing...' : '✨ Get AI Insights'}
+          ✨ Retry AI Insights
         </button>
       )}
 
