@@ -42,11 +42,14 @@ const CLASSIFICATIONS: { key: MoveClassification; label: string; icon: string; c
   { key: 'blunder',    label: 'Blunder',    icon: '❌', color: '#ef4444' },
 ];
 
-function parseInsightSections(text: string): { wellDone: string; improve: string; topics: string } {
+function parseInsightSections(text: string): { greeting: string; wellDone: string; improve: string; topics: string } {
+  // Greeting is any text before the first emoji header
+  const greetingMatch = text.match(/^([\s\S]*?)(?=✅|📈|📚)/);
   const wellDoneMatch = text.match(/✅[^\n]*:\s*([\s\S]*?)(?=📈|$)/);
   const improveMatch = text.match(/📈[^\n]*:\s*([\s\S]*?)(?=📚|$)/);
   const topicsMatch = text.match(/📚[^\n]*:\s*([\s\S]*?)$/);
   return {
+    greeting: greetingMatch?.[1]?.trim() ?? '',
     wellDone: wellDoneMatch?.[1]?.trim() ?? '',
     improve: improveMatch?.[1]?.trim() ?? '',
     topics: topicsMatch?.[1]?.trim() ?? '',
@@ -86,6 +89,13 @@ export default function GameSummary({
     if (insightsLoading || insights) return;
     setInsightsLoading(true);
     setInsightsError(false);
+
+    const userAcc = userColor === 'w' ? whiteAcc : blackAcc;
+    const dailyAccuracies = getDailyAccuracies();
+    const isFirstToday = dailyAccuracies.length === 0;
+    // recentAccuracies = previous games today (not including this one)
+    const recentAccuracies = dailyAccuracies;
+
     try {
       const res = await fetch('/api/game-insights', {
         method: 'POST',
@@ -99,6 +109,8 @@ export default function GameSummary({
           whiteName,
           blackName,
           totalMoves: moves.length,
+          isFirstToday,
+          recentAccuracies,
           moves: moves.map(m => ({
             moveNumber: m.moveNumber,
             color: m.color,
@@ -109,8 +121,11 @@ export default function GameSummary({
         }),
       });
       const data = await res.json();
-      if (data.insights) setInsights(data.insights);
-      else setInsightsError(true);
+      if (data.insights) {
+        setInsights(data.insights);
+        // Record this game's accuracy after successful fetch
+        recordDailyAccuracy(userAcc);
+      } else setInsightsError(true);
     } catch (e) {
       console.error('Failed to fetch insights:', e);
       setInsightsError(true);
@@ -118,6 +133,22 @@ export default function GameSummary({
       setInsightsLoading(false);
     }
   };
+
+  // Track daily game accuracies in localStorage
+  function getDailyKey() {
+    const d = new Date();
+    return `obi_daily_acc_${d.getFullYear()}_${d.getMonth()}_${d.getDate()}`;
+  }
+  function getDailyAccuracies(): number[] {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem(getDailyKey()) || '[]'); } catch { return []; }
+  }
+  function recordDailyAccuracy(acc: number) {
+    if (typeof window === 'undefined') return;
+    const key = getDailyKey();
+    const existing = getDailyAccuracies();
+    localStorage.setItem(key, JSON.stringify([...existing, acc]));
+  }
 
   // Auto-load insights when analysis is complete (moves have classifications)
   useEffect(() => {
@@ -204,6 +235,9 @@ export default function GameSummary({
       {parsedInsights && (
         <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4 flex flex-col gap-3 text-sm">
           <div className="text-xs font-bold text-violet-400 uppercase tracking-wider">✨ AI Game Insights</div>
+          {parsedInsights.greeting && (
+            <p className="text-zinc-300 text-xs leading-relaxed italic border-b border-zinc-800 pb-2">{parsedInsights.greeting}</p>
+          )}
           {parsedInsights.wellDone && (
             <div>
               <div className="font-semibold text-green-400 mb-1">✅ What you did well</div>
