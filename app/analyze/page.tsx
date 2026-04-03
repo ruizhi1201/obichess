@@ -418,7 +418,7 @@ export default function AnalyzePage() {
         </Link>
       </nav>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {showUpgradeGate ? (
           <div className="flex-1 flex items-center justify-center p-8">
             <div className="max-w-md w-full text-center">
@@ -448,7 +448,7 @@ export default function AnalyzePage() {
           </div>
         ) : (
           // ── Main analysis layout: LEFT | MOVES | RIGHT ──
-          <div className="flex-1 flex overflow-hidden h-full">
+          <div className="flex-1 flex overflow-hidden h-full min-h-0">
 
             {/* LEFT: Board + win bar + controls — FIXED, never scrolls */}
             <div className="flex flex-col items-center justify-start p-4 gap-3 w-1/2 min-w-0 overflow-hidden flex-shrink-0">
@@ -487,7 +487,7 @@ export default function AnalyzePage() {
             </div>
 
             {/* CENTER: Move list */}
-            <div ref={moveListRef} className="w-44 border-l border-r border-zinc-800 shrink-0 h-full overflow-hidden">
+            <div ref={moveListRef} className="w-44 border-l border-r border-zinc-800 shrink-0 flex flex-col min-h-0 overflow-hidden">
               <MoveList
                 moves={moves}
                 currentIndex={currentMoveIndex}

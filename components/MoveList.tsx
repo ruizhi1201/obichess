@@ -52,11 +52,11 @@ export default function MoveList({ moves, currentIndex, onSelectMove }: MoveList
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-3 py-3 border-b border-zinc-800 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+    <div className="flex flex-col min-h-0 flex-1">
+      <div className="px-3 py-3 border-b border-zinc-800 text-xs font-semibold text-zinc-500 uppercase tracking-wider shrink-0">
         Moves
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto py-1">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 py-1">
         {movePairs.length === 0 && (
           <div className="text-center text-zinc-600 text-sm py-8">No moves</div>
         )}
