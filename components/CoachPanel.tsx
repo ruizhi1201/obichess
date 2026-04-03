@@ -23,6 +23,9 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
   const [lastMoveSan, setLastMoveSan] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [micEnabled, setMicEnabled] = useState(true);
+  const [userHasInteracted, setUserHasInteracted] = useState(false);
+  const [pendingAutoPlay, setPendingAutoPlay] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -38,7 +41,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
     }
   }, [messages, explanation, explanationLoading]);
 
-  const playTts = useCallback(async (text: string) => {
+  const playTts = useCallback(async (text: string, autoTriggered = false) => {
     if (!text) return;
     setTtsLoading(true);
     setTtsStub(false);
@@ -52,7 +55,17 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
       if (contentType?.includes('audio')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        new Audio(url).play();
+        if (autoTriggered && !userHasInteracted) {
+          // Browser blocks autoplay without user gesture — queue it instead
+          setPendingAutoPlay(url);
+        } else {
+          const audio = new Audio(url);
+          audioRef.current = audio;
+          audio.play().catch(() => {
+            // Still blocked — show pending prompt
+            setPendingAutoPlay(url);
+          });
+        }
       } else {
         const data = await res.json();
         if (data.stub) setTtsStub(true);
@@ -62,7 +75,20 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
     } finally {
       setTtsLoading(false);
     }
-  }, []);
+  }, [userHasInteracted]);
+
+  // Play pending audio when user first interacts
+  const handleUserInteraction = useCallback(() => {
+    if (!userHasInteracted) {
+      setUserHasInteracted(true);
+      if (pendingAutoPlay) {
+        const audio = new Audio(pendingAutoPlay);
+        audioRef.current = audio;
+        audio.play().catch(() => {});
+        setPendingAutoPlay(null);
+      }
+    }
+  }, [userHasInteracted, pendingAutoPlay]);
 
   // Fetch explanation when move changes
   useEffect(() => {
@@ -114,9 +140,9 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
       const data = await res.json();
       const expl = data.explanation || 'Could not generate explanation.';
       setExplanation(expl);
-      // Auto-play TTS if sound is enabled
+      // Auto-play TTS if sound is enabled (autoTriggered=true so browser policy is handled)
       if (soundEnabled) {
-        playTts(expl);
+        playTts(expl, true);
       }
     } catch {
       setExplanation('Failed to get explanation. Check your connection.');
@@ -217,7 +243,23 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
   const noMoveSelected = !move;
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-zinc-950">
+    <div className="flex flex-col h-full min-h-0 bg-zinc-950" onClick={handleUserInteraction}>
+      {/* Pending autoplay banner — shown when browser blocked autoplay */}
+      {pendingAutoPlay && soundEnabled && (
+        <div
+          className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center gap-2 cursor-pointer hover:bg-amber-500/20 transition-colors shrink-0"
+          onClick={() => {
+            const audio = new Audio(pendingAutoPlay);
+            audioRef.current = audio;
+            audio.play().catch(() => {});
+            setPendingAutoPlay(null);
+            setUserHasInteracted(true);
+          }}
+        >
+          <span className="text-amber-400 text-sm">🔊</span>
+          <span className="text-amber-300 text-xs">Tap here to hear Obi&apos;s coaching</span>
+        </div>
+      )}
       {/* Toast notification */}
       {toastMsg && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-zinc-800 border border-zinc-600 text-zinc-200 text-xs px-3 py-2 rounded-lg shadow-lg pointer-events-none">
