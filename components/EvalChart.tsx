@@ -142,6 +142,30 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
             fill="url(#lichessWhite)"
             baseValue={50}
             isAnimationActive={false}
+            dot={(props) => {
+              const { cx, cy, index } = props as { cx: number; cy: number; index: number };
+              if (index === currentIndex) {
+                return (
+                  <circle
+                    key={`dot-${index}`}
+                    cx={cx}
+                    cy={cy}
+                    r={5}
+                    fill="#fbbf24"
+                    stroke="#000"
+                    strokeWidth={1}
+                  />
+                );
+              }
+              return <g key={`dot-${index}`} />;
+            }}
+          />
+          {/* Current move cursor */}
+          <ReferenceLine
+            x={currentIndex}
+            stroke="#fbbf24"
+            strokeWidth={2}
+            strokeDasharray="3 3"
           />
         </AreaChart>
       </ResponsiveContainer>

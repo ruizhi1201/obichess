@@ -64,7 +64,7 @@ export default function MoveNotation({ moves, currentIndex, onSelectMove }: Move
     <div
       ref={containerRef}
       className="overflow-y-auto bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2"
-      style={{ maxHeight: 96 }}
+      style={{ maxHeight: 160 }}
     >
       {pairs.length === 0 ? (
         <span className="text-zinc-600 text-sm">No moves yet</span>

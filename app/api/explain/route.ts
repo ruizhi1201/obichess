@@ -69,6 +69,11 @@ export async function POST(req: NextRequest) {
       prompt += `\n\nPlayer skill context: The player is rated Step ${playerStep} — ${playerLabel}${uscfStr}. At this level, focus your explanation on: ${focusAreas.join(', ')}. Keep explanations targeted to the player's skill level — don't overwhelm a beginner with master-level concepts.`;
     }
 
+    // Extra positional commentary for stronger players
+    if (playerUscfEquivalent && playerUscfEquivalent >= 1500) {
+      prompt += `\n\nThis player is rated ${playerUscfEquivalent} USCF — a strong club player. In addition to the move explanation, add 1-2 sentences of POSITIONAL insight: discuss pawn structure implications, piece coordination, weak squares, open files, or long-term strategic considerations that this move creates or ignores. Use proper chess terminology.`;
+    }
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [

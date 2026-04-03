@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { type AnalyzedMove, type MoveClassification } from '@/lib/chess-utils';
 
 interface GameSummaryProps {
@@ -9,6 +10,7 @@ interface GameSummaryProps {
   currentMoveIndex: number;
   onSelectMove: (index: number) => void;
   onStartReview: () => void;
+  userColor?: 'w' | 'b';
 }
 
 function calcAccuracy(moves: AnalyzedMove[], color: 'w' | 'b'): number {
@@ -27,9 +29,9 @@ function countClassification(moves: AnalyzedMove[], color: 'w' | 'b', cls: MoveC
 }
 
 function accuracyColor(acc: number): string {
-  if (acc >= 80) return '#22c55e';   // green
-  if (acc >= 60) return '#fbbf24';   // yellow
-  return '#f97316';                   // orange
+  if (acc >= 80) return '#22c55e';
+  if (acc >= 60) return '#fbbf24';
+  return '#f97316';
 }
 
 const CLASSIFICATIONS: { key: MoveClassification; label: string; icon: string; color: string }[] = [
@@ -40,51 +42,99 @@ const CLASSIFICATIONS: { key: MoveClassification; label: string; icon: string; c
   { key: 'blunder',    label: 'Blunder',    icon: '❌', color: '#ef4444' },
 ];
 
+function parseInsightSections(text: string): { wellDone: string; improve: string; topics: string } {
+  const wellDoneMatch = text.match(/✅[^\n]*:\s*([\s\S]*?)(?=📈|$)/);
+  const improveMatch = text.match(/📈[^\n]*:\s*([\s\S]*?)(?=📚|$)/);
+  const topicsMatch = text.match(/📚[^\n]*:\s*([\s\S]*?)$/);
+  return {
+    wellDone: wellDoneMatch?.[1]?.trim() ?? '',
+    improve: improveMatch?.[1]?.trim() ?? '',
+    topics: topicsMatch?.[1]?.trim() ?? '',
+  };
+}
+
 export default function GameSummary({
   moves,
   whiteName = 'White',
   blackName = 'Black',
   onStartReview,
+  userColor = 'w',
 }: GameSummaryProps) {
+  const [insights, setInsights] = useState<string | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
   const whiteAcc = calcAccuracy(moves, 'w');
   const blackAcc = calcAccuracy(moves, 'b');
 
+  const whiteCounts = {
+    best: countClassification(moves, 'w', 'best'),
+    good: countClassification(moves, 'w', 'good'),
+    inaccuracy: countClassification(moves, 'w', 'inaccuracy'),
+    mistake: countClassification(moves, 'w', 'mistake'),
+    blunder: countClassification(moves, 'w', 'blunder'),
+  };
+  const blackCounts = {
+    best: countClassification(moves, 'b', 'best'),
+    good: countClassification(moves, 'b', 'good'),
+    inaccuracy: countClassification(moves, 'b', 'inaccuracy'),
+    mistake: countClassification(moves, 'b', 'mistake'),
+    blunder: countClassification(moves, 'b', 'blunder'),
+  };
+
+  const fetchInsights = async () => {
+    setInsightsLoading(true);
+    try {
+      const res = await fetch('/api/game-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          whiteAcc,
+          blackAcc,
+          whiteCounts,
+          blackCounts,
+          userColor,
+          whiteName,
+          blackName,
+          totalMoves: moves.length,
+        }),
+      });
+      const data = await res.json();
+      if (data.insights) setInsights(data.insights);
+    } catch (e) {
+      console.error('Failed to fetch insights:', e);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  const parsedInsights = insights ? parseInsightSections(insights) : null;
+
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Player accuracy rows — chess.com style */}
+    <div className="flex flex-col gap-4 p-4 overflow-y-auto h-full">
+      {/* Player accuracy rows */}
       <div className="flex flex-col gap-1">
-        {/* White row */}
         <div className="flex items-center gap-2 py-2 px-3 bg-zinc-900 rounded-lg border border-zinc-800">
           <span className="text-base">♔</span>
           <span className="text-sm text-zinc-300 flex-1 truncate font-medium" title={whiteName}>
             {whiteName}
           </span>
-          <span
-            className="text-sm font-bold tabular-nums shrink-0"
-            style={{ color: accuracyColor(whiteAcc) }}
-          >
+          <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: accuracyColor(whiteAcc) }}>
             {whiteAcc.toFixed(1)}%
           </span>
         </div>
-
-        {/* Black row */}
         <div className="flex items-center gap-2 py-2 px-3 bg-zinc-900 rounded-lg border border-zinc-800">
           <span className="text-base">♚</span>
           <span className="text-sm text-zinc-300 flex-1 truncate font-medium" title={blackName}>
             {blackName}
           </span>
-          <span
-            className="text-sm font-bold tabular-nums shrink-0"
-            style={{ color: accuracyColor(blackAcc) }}
-          >
+          <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: accuracyColor(blackAcc) }}>
             {blackAcc.toFixed(1)}%
           </span>
         </div>
       </div>
 
-      {/* Move classification breakdown — compact chess.com style */}
+      {/* Move classification breakdown */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
-        {/* Table header */}
         <div className="grid grid-cols-[1fr_auto_auto] border-b border-zinc-800">
           <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Type</div>
           <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 text-center w-10 uppercase tracking-wider">♔</div>
@@ -101,9 +151,7 @@ export default function GameSummary({
             >
               <div className="px-3 py-2 flex items-center gap-2">
                 <span className="text-xs">{icon}</span>
-                <span className="text-xs font-medium" style={{ color }}>
-                  {label}
-                </span>
+                <span className="text-xs font-medium" style={{ color }}>{label}</span>
               </div>
               <div className="px-3 py-2 text-sm font-bold text-center w-10 tabular-nums" style={{ color: wCount > 0 ? color : '#52525b' }}>
                 {wCount}
@@ -116,7 +164,42 @@ export default function GameSummary({
         })}
       </div>
 
-      {/* Review Game button — amber/gold chess.com style */}
+      {/* AI Insights */}
+      {!insights && (
+        <button
+          onClick={fetchInsights}
+          disabled={insightsLoading}
+          className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-xl transition-colors text-sm"
+        >
+          {insightsLoading ? '⏳ Analyzing...' : '✨ Get AI Insights'}
+        </button>
+      )}
+
+      {parsedInsights && (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4 flex flex-col gap-3 text-sm">
+          <div className="text-xs font-bold text-violet-400 uppercase tracking-wider">✨ AI Game Insights</div>
+          {parsedInsights.wellDone && (
+            <div>
+              <div className="font-semibold text-green-400 mb-1">✅ What you did well</div>
+              <p className="text-zinc-300 text-xs leading-relaxed">{parsedInsights.wellDone}</p>
+            </div>
+          )}
+          {parsedInsights.improve && (
+            <div>
+              <div className="font-semibold text-amber-400 mb-1">📈 What to improve</div>
+              <p className="text-zinc-300 text-xs leading-relaxed">{parsedInsights.improve}</p>
+            </div>
+          )}
+          {parsedInsights.topics && (
+            <div>
+              <div className="font-semibold text-blue-400 mb-1">📚 Suggested study topics</div>
+              <p className="text-zinc-300 text-xs leading-relaxed">{parsedInsights.topics}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Review Game button */}
       <button
         onClick={onStartReview}
         className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-3 px-4 rounded-xl transition-colors text-sm tracking-wide"

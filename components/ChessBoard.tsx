@@ -10,7 +10,7 @@ interface ChessBoardProps {
   lastMove?: AnalyzedMove | null;
   bestMove?: string; // UCI notation e.g. "e2e4"
   showArrows?: boolean;
-  onMove?: (from: string, to: string) => boolean;
+  onMove?: (from: string, to: string) => boolean | Promise<boolean>;
 }
 
 function uciToSquares(uci: string): { from: string; to: string } | null {
@@ -65,7 +65,13 @@ export default function ChessBoard({
           onPieceDrop: onMove
             ? ({ sourceSquare, targetSquare }) => {
                 if (!targetSquare) return false;
-                return onMove(sourceSquare, targetSquare);
+                const result = onMove(sourceSquare, targetSquare);
+                if (result instanceof Promise) {
+                  // async handler — optimistically return true; the handler updates state when done
+                  result.catch(() => {});
+                  return true;
+                }
+                return result;
               }
             : undefined,
         }}

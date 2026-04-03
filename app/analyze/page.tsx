@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { Chess } from 'chess.js';
 import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
 import MoveNotation from '@/components/MoveNotation';
 import CoachPanel from '@/components/CoachPanel';
@@ -206,6 +207,9 @@ export default function AnalyzePage() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [pendingWhiteName, setPendingWhiteName] = useState('White');
   const [pendingBlackName, setPendingBlackName] = useState('Black');
+  const [exploreMode, setExploreMode] = useState(false);
+  const [exploreFen, setExploreFen] = useState<string | null>(null);
+  const [exploreMoveEval, setExploreMoveEval] = useState<{ eval: number; bestMove: string } | null>(null);
 
 
   useEffect(() => {
@@ -362,8 +366,40 @@ export default function AnalyzePage() {
 
   const handleStartReview = useCallback(() => {
     if (moves.length > 0) { setCurrentMoveIndex(0); setSelectedMove(moves[0]); }
-
   }, [moves]);
+
+  const handleExploreToggle = useCallback(() => {
+    if (exploreMode) {
+      setExploreMode(false);
+      setExploreFen(null);
+      setExploreMoveEval(null);
+    } else {
+      setExploreMode(true);
+      setExploreFen(null);
+      setExploreMoveEval(null);
+    }
+  }, [exploreMode]);
+
+  const handleExploreMove = useCallback(async (from: string, to: string): Promise<boolean> => {
+    const baseFen = exploreFen ?? currentFen;
+    try {
+      const chess = new Chess(baseFen);
+      const result = chess.move({ from, to, promotion: 'q' });
+      if (!result) return false;
+      const newFen = chess.fen();
+      setExploreFen(newFen);
+      try {
+        const { analyzePosition } = await import('@/lib/stockfish');
+        const analysis = await analyzePosition(newFen, 14);
+        setExploreMoveEval({ eval: analysis.eval, bestMove: analysis.bestMove });
+      } catch {
+        // ignore stockfish errors
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, [exploreFen, currentFen]);
 
   const remainingHint = (() => {
     if (isPro) return null;
@@ -463,32 +499,65 @@ export default function AnalyzePage() {
                 {/* Chessboard */}
                 <div className="flex-1 max-w-[480px]">
                   <ChessBoard
-                    fen={currentFen}
-                    lastMove={lastMove}
-                    bestMove={lastMove?.bestMove}
-                    showArrows={true}
+                    fen={exploreMode ? (exploreFen ?? currentFen) : currentFen}
+                    lastMove={exploreMode ? null : lastMove}
+                    bestMove={exploreMode ? undefined : lastMove?.bestMove}
+                    showArrows={!exploreMode}
+                    onMove={exploreMode ? handleExploreMove : undefined}
                   />
                 </div>
               </div>
 
+              {/* Explore mode banner */}
+              {exploreMode && (
+                <div className="w-full max-w-[500px] bg-violet-900/40 border border-violet-700 rounded-lg px-3 py-2 flex items-center justify-between text-sm">
+                  <span className="text-violet-200">🔍 Explore mode — drag pieces to test ideas.</span>
+                  <button onClick={handleExploreToggle} className="text-violet-400 hover:text-violet-200 font-bold ml-2">✕</button>
+                </div>
+              )}
+
+              {/* Explore eval card */}
+              {exploreMode && exploreMoveEval && (
+                <div className="w-full max-w-[500px] bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono text-zinc-300">
+                  Stockfish: <span className="text-amber-400 font-bold">{exploreMoveEval.eval >= 0 ? '+' : ''}{(exploreMoveEval.eval / 100).toFixed(2)}</span>
+                  {exploreMoveEval.bestMove && (
+                    <span className="ml-2 text-zinc-400">| Best: <span className="text-green-400">{exploreMoveEval.bestMove}</span></span>
+                  )}
+                </div>
+              )}
+
               {/* Notation strip — under board, full width */}
-              <div className="w-full max-w-[500px]">
-                <MoveNotation
-                  moves={moves}
-                  currentIndex={currentMoveIndex}
-                  onSelectMove={handleMoveSelect}
-                />
-              </div>
+              {!exploreMode && (
+                <div className="w-full max-w-[500px]">
+                  <MoveNotation
+                    moves={moves}
+                    currentIndex={currentMoveIndex}
+                    onSelectMove={handleMoveSelect}
+                  />
+                </div>
+              )}
 
               {/* Nav controls */}
               <div className="flex items-center gap-2">
-                <button onClick={goToStart} className="chess-nav-btn" title="Start">⏮</button>
-                <button onClick={goToPrev} className="chess-nav-btn" title="Previous">◀</button>
-                <span className="text-zinc-500 text-sm px-2">
-                  {currentMoveIndex === -1 ? 'Start' : `Move ${Math.floor(currentMoveIndex / 2) + 1}${currentMoveIndex % 2 === 0 ? '.' : '...'}`}
-                </span>
-                <button onClick={goToNext} className="chess-nav-btn" title="Next">▶</button>
-                <button onClick={goToEnd} className="chess-nav-btn" title="End">⏭</button>
+                {!exploreMode && (
+                  <>
+                    <button onClick={goToStart} className="chess-nav-btn" title="Start">⏮</button>
+                    <button onClick={goToPrev} className="chess-nav-btn" title="Previous">◀</button>
+                    <span className="text-zinc-500 text-sm px-2">
+                      {currentMoveIndex === -1 ? 'Start' : `Move ${Math.floor(currentMoveIndex / 2) + 1}${currentMoveIndex % 2 === 0 ? '.' : '...'}`}
+                    </span>
+                    <button onClick={goToNext} className="chess-nav-btn" title="Next">▶</button>
+                    <button onClick={goToEnd} className="chess-nav-btn" title="End">⏭</button>
+                  </>
+                )}
+                <button
+                  onClick={handleExploreToggle}
+                  className={`chess-nav-btn px-3 text-sm ${exploreMode ? 'bg-violet-700 border-violet-500 text-white' : ''}`}
+                  title="Explore mode"
+                  style={{ width: 'auto' }}
+                >
+                  🔍 Explore
+                </button>
               </div>
             </div>
 
@@ -517,6 +586,7 @@ export default function AnalyzePage() {
                     currentMoveIndex={currentMoveIndex}
                     onSelectMove={handleMoveSelect}
                     onStartReview={handleStartReview}
+                    userColor={userColor}
                   />
                 ) : (
                   <CoachPanel
