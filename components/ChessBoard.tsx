@@ -11,6 +11,7 @@ interface ChessBoardProps {
   bestMove?: string; // UCI notation e.g. "e2e4"
   showArrows?: boolean;
   onMove?: (from: string, to: string) => boolean | Promise<boolean>;
+  boardOrientation?: 'white' | 'black';
 }
 
 function uciToSquares(uci: string): { from: string; to: string } | null {
@@ -24,6 +25,7 @@ export default function ChessBoard({
   bestMove,
   showArrows = false,
   onMove,
+  boardOrientation = 'white',
 }: ChessBoardProps) {
   const squareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {};
@@ -61,6 +63,7 @@ export default function ChessBoard({
           darkSquareStyle: { backgroundColor: '#4a3728' },
           lightSquareStyle: { backgroundColor: '#d4a574' },
           allowDragging: !!onMove,
+          boardOrientation,
           animationDurationInMs: 150,
           onPieceDrop: onMove
             ? ({ sourceSquare, targetSquare }) => {

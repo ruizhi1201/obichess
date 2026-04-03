@@ -210,6 +210,7 @@ export default function AnalyzePage() {
   const [exploreMode, setExploreMode] = useState(false);
   const [exploreFen, setExploreFen] = useState<string | null>(null);
   const [exploreMoveEval, setExploreMoveEval] = useState<{ eval: number; bestMove: string } | null>(null);
+  const [exploreLastMoveSan, setExploreLastMoveSan] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -373,21 +374,35 @@ export default function AnalyzePage() {
       setExploreMode(false);
       setExploreFen(null);
       setExploreMoveEval(null);
+      setExploreLastMoveSan(null);
     } else {
       setExploreMode(true);
       setExploreFen(null);
       setExploreMoveEval(null);
+      setExploreLastMoveSan(null);
     }
   }, [exploreMode]);
 
   const handleExploreMove = useCallback(async (from: string, to: string): Promise<boolean> => {
     const baseFen = exploreFen ?? currentFen;
     try {
-      const chess = new Chess(baseFen);
+      // Check if piece on `from` belongs to the current turn; if not, swap turn in FEN
+      let fenToUse = baseFen;
+      const tempChess = new Chess(baseFen);
+      const piece = tempChess.get(from as Parameters<typeof tempChess.get>[0]);
+      if (piece && piece.color !== tempChess.turn()) {
+        // Swap turn in FEN: split by space, flip index 1
+        const parts = baseFen.split(' ');
+        parts[1] = parts[1] === 'w' ? 'b' : 'w';
+        fenToUse = parts.join(' ');
+      }
+
+      const chess = new Chess(fenToUse);
       const result = chess.move({ from, to, promotion: 'q' });
       if (!result) return false;
       const newFen = chess.fen();
       setExploreFen(newFen);
+      setExploreLastMoveSan(result.san);
       try {
         const { analyzePosition } = await import('@/lib/stockfish');
         const analysis = await analyzePosition(newFen, 14);
@@ -504,6 +519,7 @@ export default function AnalyzePage() {
                     bestMove={exploreMode ? undefined : lastMove?.bestMove}
                     showArrows={!exploreMode}
                     onMove={exploreMode ? handleExploreMove : undefined}
+                    boardOrientation={userColor === 'b' ? 'black' : 'white'}
                   />
                 </div>
               </div>
@@ -519,6 +535,9 @@ export default function AnalyzePage() {
               {/* Explore eval card */}
               {exploreMode && exploreMoveEval && (
                 <div className="w-full max-w-[500px] bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono text-zinc-300">
+                  {exploreLastMoveSan && (
+                    <span className="text-violet-300 font-bold mr-2">{exploreLastMoveSan} →</span>
+                  )}
                   Stockfish: <span className="text-amber-400 font-bold">{exploreMoveEval.eval >= 0 ? '+' : ''}{(exploreMoveEval.eval / 100).toFixed(2)}</span>
                   {exploreMoveEval.bestMove && (
                     <span className="ml-2 text-zinc-400">| Best: <span className="text-green-400">{exploreMoveEval.bestMove}</span></span>

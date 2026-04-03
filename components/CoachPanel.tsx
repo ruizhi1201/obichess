@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { type AnalyzedMove, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
 import { type ChatMessage } from '@/app/api/chat/route';
 import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
@@ -21,9 +21,15 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [lastMoveSan, setLastMoveSan] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [micEnabled, setMicEnabled] = useState(true);
+  const [isListening, setIsListening] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   // Auto-scroll to bottom — scroll ONLY within the chat container, never the page
   useEffect(() => {
@@ -31,6 +37,32 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [messages, explanation, explanationLoading]);
+
+  const playTts = useCallback(async (text: string) => {
+    if (!text) return;
+    setTtsLoading(true);
+    setTtsStub(false);
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const contentType = res.headers.get('Content-Type');
+      if (contentType?.includes('audio')) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        new Audio(url).play();
+      } else {
+        const data = await res.json();
+        if (data.stub) setTtsStub(true);
+      }
+    } catch {
+      console.error('TTS failed');
+    } finally {
+      setTtsLoading(false);
+    }
+  }, []);
 
   // Fetch explanation when move changes
   useEffect(() => {
@@ -80,7 +112,12 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
         }),
       });
       const data = await res.json();
-      setExplanation(data.explanation || 'Could not generate explanation.');
+      const expl = data.explanation || 'Could not generate explanation.';
+      setExplanation(expl);
+      // Auto-play TTS if sound is enabled
+      if (soundEnabled) {
+        playTts(expl);
+      }
     } catch {
       setExplanation('Failed to get explanation. Check your connection.');
     } finally {
@@ -89,29 +126,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
   };
 
   const handleListen = async () => {
-    if (!explanation) return;
-    setTtsLoading(true);
-    setTtsStub(false);
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: explanation }),
-      });
-      const contentType = res.headers.get('Content-Type');
-      if (contentType?.includes('audio')) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        new Audio(url).play();
-      } else {
-        const data = await res.json();
-        if (data.stub) setTtsStub(true);
-      }
-    } catch {
-      console.error('TTS failed');
-    } finally {
-      setTtsLoading(false);
-    }
+    await playTts(explanation);
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -154,14 +169,83 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
     }
   };
 
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  const handleMicClick = () => {
+    if (typeof window === 'undefined') return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      showToast('Voice not supported in this browser');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition: any = new SpeechRecognitionCtor();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  };
+
   const noMoveSelected = !move;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-zinc-950">
+      {/* Toast notification */}
+      {toastMsg && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-zinc-800 border border-zinc-600 text-zinc-200 text-xs px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+          {toastMsg}
+        </div>
+      )}
+
       {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 shrink-0">
         <span className="text-lg">🤖</span>
         <span className="text-sm font-semibold text-zinc-200">Obi Coach</span>
+        {/* Audio toggles */}
+        <div className="flex items-center gap-1 ml-2">
+          <button
+            onClick={() => setSoundEnabled(v => !v)}
+            title={soundEnabled ? 'Sound ON (click to mute)' : 'Sound OFF (click to enable)'}
+            className={`text-sm px-1.5 py-0.5 rounded-md transition-colors ${soundEnabled ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}
+          >
+            {soundEnabled ? '🔊' : '🔇'}
+          </button>
+          <button
+            onClick={() => setMicEnabled(v => !v)}
+            title={micEnabled ? 'Mic ON (click to disable)' : 'Mic OFF (click to enable)'}
+            className={`text-sm px-1.5 py-0.5 rounded-md transition-colors ${micEnabled ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}
+          >
+            {micEnabled ? '🎤' : '🚫'}
+          </button>
+        </div>
         {move && (
           <span className="ml-auto flex items-center gap-2">
             {move.classification && (
@@ -272,7 +356,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
             )}
           </>
         )}
-        <div />
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input area — always at bottom */}
@@ -292,6 +376,22 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
           </div>
         )}
         <form onSubmit={sendMessage} className="flex items-center gap-2">
+          {/* Mic button — shown when micEnabled */}
+          {micEnabled && (
+            <button
+              type="button"
+              onClick={handleMicClick}
+              disabled={noMoveSelected}
+              title={isListening ? 'Stop recording' : 'Speak to Obi'}
+              className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+              }`}
+            >
+              🎤
+            </button>
+          )}
           <input
             ref={inputRef}
             type="text"
