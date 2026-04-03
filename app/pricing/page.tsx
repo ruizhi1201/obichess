@@ -60,6 +60,8 @@ const plans = [
 export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoApplied, setPromoApplied] = useState(false);
 
   const handleUpgrade = async (planKey: string) => {
     setLoading(planKey);
@@ -80,7 +82,7 @@ export default function PricingPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ plan: planKey }),
+        body: JSON.stringify({ plan: planKey, promoCode: promoCode.trim() || undefined }),
       });
 
       const data = await res.json();
@@ -124,6 +126,30 @@ export default function PricingPage() {
             <p className="text-zinc-400 text-lg max-w-xl mx-auto">
               Start free, upgrade when you&apos;re ready. Cancel anytime.
             </p>
+          </div>
+
+          {/* Promo code input */}
+          <div className="max-w-sm mx-auto mb-8">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={promoCode}
+                onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoApplied(false); }}
+                placeholder="Promo code (optional)"
+                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/60"
+              />
+              {promoCode && (
+                <button
+                  onClick={() => setPromoApplied(true)}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
+            {promoApplied && promoCode && (
+              <p className="text-amber-400 text-xs mt-2 text-center">✓ Code &quot;{promoCode}&quot; will be applied at checkout</p>
+            )}
           </div>
 
           {error && (

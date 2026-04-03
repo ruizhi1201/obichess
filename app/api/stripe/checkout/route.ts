@@ -6,7 +6,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-03
 
 export async function POST(req: NextRequest) {
   try {
-    const { plan } = await req.json();
+    const { plan, promoCode } = await req.json();
 
     if (!plan || !['pro', 'family'].includes(plan)) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
@@ -54,6 +54,17 @@ export async function POST(req: NextRequest) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://obichess.com';
 
+    // Resolve promo code to a Stripe promotion code ID if provided
+    let discounts: { promotion_code: string }[] | undefined;
+    if (promoCode) {
+      const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+      if (promoCodes.data.length > 0) {
+        discounts = [{ promotion_code: promoCodes.data[0].id }];
+      } else {
+        return NextResponse.json({ error: 'Invalid or expired promo code' }, { status: 400 });
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
@@ -61,6 +72,9 @@ export async function POST(req: NextRequest) {
       success_url: `${appUrl}/dashboard?upgraded=1`,
       cancel_url: `${appUrl}/pricing`,
       metadata: { user_id: user.id, plan },
+      // If no promo code entered manually, allow user to enter one at checkout
+      allow_promotion_codes: !discounts,
+      ...(discounts ? { discounts } : {}),
     });
 
     return NextResponse.json({ url: session.url });
