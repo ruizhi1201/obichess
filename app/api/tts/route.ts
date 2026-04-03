@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     // If ElevenLabs key is provided (not placeholder), use the real API
     if (apiKey && apiKey !== 'placeholder') {
-      const voiceId = 'pNInz6obpgDQGcFmaJgB'; // Adam voice — deep, authoritative coach voice
+      const voiceId = 'onwK4e9ZLuTAKqWW03F9'; // Drew voice — engaging, friendly coach voice
       
       const response = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
