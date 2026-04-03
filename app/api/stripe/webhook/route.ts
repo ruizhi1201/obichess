@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
           plan,
           status: sub.status,
           current_period_end: getSubPeriodEnd(sub),
-        });
+        }, { onConflict: 'user_id' });
 
         // Handle referral reward when new paid subscriber
         await handleReferralConversion(supabase, userId, plan);
