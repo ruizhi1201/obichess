@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { type AnalyzedMove, classificationColor } from '@/lib/chess-utils';
+import { type AnalyzedMove, type MoveClassification, classificationColor } from '@/lib/chess-utils';
 
 interface MoveNotationProps {
   moves: AnalyzedMove[];
@@ -49,7 +49,7 @@ export default function MoveNotation({ moves, currentIndex, onSelectMove }: Move
     }
   }
 
-  const badge = (cls: string | undefined) => {
+  const badge = (cls: MoveClassification | undefined) => {
     if (!cls || cls === 'best' || cls === 'unknown') return null;
     const symbol = cls === 'blunder' ? '??' : cls === 'mistake' ? '?' : cls === 'inaccuracy' ? '?!' : null;
     if (!symbol) return null;
