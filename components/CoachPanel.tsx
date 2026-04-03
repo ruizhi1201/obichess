@@ -228,9 +228,29 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
       {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 shrink-0">
         <span className="text-lg">🤖</span>
-        <span className="text-sm font-semibold text-zinc-200">Obi Coach</span>
-        {/* Audio toggles */}
-        <div className="flex items-center gap-1 ml-2">
+        <span className="text-sm font-semibold text-zinc-200 shrink-0">Obi Coach</span>
+        {/* Move info — takes remaining space */}
+        {move && (
+          <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
+            {move.classification && (
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{
+                  color: classificationColor(move.classification),
+                  backgroundColor: classificationColor(move.classification) + '22',
+                }}
+              >
+                {classificationLabel(move.classification)}
+              </span>
+            )}
+            <span className="font-mono text-base font-bold text-zinc-100 truncate">{move.san}</span>
+            {move.evalAfter !== undefined && (
+              <span className="text-xs text-zinc-400 font-mono shrink-0">{formatEval(move.evalAfter)}</span>
+            )}
+          </span>
+        )}
+        {/* Audio toggles — always visible, pinned to right */}
+        <div className="flex items-center gap-1 ml-auto shrink-0">
           <button
             onClick={() => setSoundEnabled(v => !v)}
             title={soundEnabled ? 'Sound ON (click to mute)' : 'Sound OFF (click to enable)'}
@@ -246,25 +266,6 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
             {micEnabled ? '🎤' : '🚫'}
           </button>
         </div>
-        {move && (
-          <span className="ml-auto flex items-center gap-2">
-            {move.classification && (
-              <span
-                className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{
-                  color: classificationColor(move.classification),
-                  backgroundColor: classificationColor(move.classification) + '22',
-                }}
-              >
-                {classificationLabel(move.classification)}
-              </span>
-            )}
-            <span className="font-mono text-base font-bold text-zinc-100">{move.san}</span>
-            {move.evalAfter !== undefined && (
-              <span className="text-xs text-zinc-400 font-mono">{formatEval(move.evalAfter)}</span>
-            )}
-          </span>
-        )}
       </div>
 
       {/* Scrollable message area — overflow scoped here, never escapes to parent */}
