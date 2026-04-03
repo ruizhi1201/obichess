@@ -456,3 +456,4 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
     </div>
   );
 }
+// build: 20260403203914
