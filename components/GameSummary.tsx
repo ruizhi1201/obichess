@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { type AnalyzedMove, type MoveClassification } from '@/lib/chess-utils';
+import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
 
 interface GameSummaryProps {
   moves: AnalyzedMove[];
@@ -11,6 +12,8 @@ interface GameSummaryProps {
   onSelectMove: (index: number) => void;
   onStartReview: () => void;
   userColor?: 'w' | 'b';
+  playerProfile?: PlayerProfile | null;
+  trainingFocus?: string;
 }
 
 function calcAccuracy(moves: AnalyzedMove[], color: 'w' | 'b'): number {
@@ -62,6 +65,8 @@ export default function GameSummary({
   blackName = 'Black',
   onStartReview,
   userColor = 'w',
+  playerProfile,
+  trainingFocus,
 }: GameSummaryProps) {
   const [insights, setInsights] = useState<string | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
@@ -96,6 +101,9 @@ export default function GameSummary({
     // recentAccuracies = previous games today (not including this one)
     const recentAccuracies = dailyAccuracies;
 
+    // Compute skill step from player profile for depth-tuning
+    const skillStep = playerProfile ? getSkillStep(playerProfile.uscfEquivalent) : null;
+
     try {
       const res = await fetch('/api/game-insights', {
         method: 'POST',
@@ -111,6 +119,8 @@ export default function GameSummary({
           totalMoves: moves.length,
           isFirstToday,
           recentAccuracies,
+          trainingFocus: trainingFocus || null,
+          skillStep: skillStep ? { step: skillStep.step, label: skillStep.label, uscfEquivalent: playerProfile?.uscfEquivalent } : null,
           moves: moves.map(m => ({
             moveNumber: m.moveNumber,
             color: m.color,
@@ -215,6 +225,15 @@ export default function GameSummary({
           );
         })}
       </div>
+
+      {/* Training Focus Badge */}
+      {trainingFocus && (
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-300">
+          <span>🎯</span>
+          <span className="font-medium">Training Focus:</span>
+          <span className="text-amber-200">{trainingFocus}</span>
+        </div>
+      )}
 
       {/* AI Insights - auto loads, shows spinner while loading */}
       {!insights && insightsLoading && (

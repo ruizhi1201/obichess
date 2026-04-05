@@ -51,117 +51,87 @@ export function computeUscfEquivalent(rating: number, type: RatingType): number 
   }
 }
 
+export type SkillCategory = 'Beginner' | 'Intermediate' | 'Advanced' | 'Competitive/Elite';
+
 export interface SkillStep {
   step: number;
   label: string;
+  category: SkillCategory;
   focusAreas: string[];
 }
 
+/**
+ * Maps a USCF-equivalent rating to a skill step and category:
+ *
+ *   Step 1 — Beginner           (<500)
+ *   Step 2 — Intermediate       (500–1399)
+ *   Step 3 — Advanced           (1400–1799)
+ *   Step 4 — Competitive/Elite  (1800+)
+ */
 export function getSkillStep(uscfEq: number): SkillStep {
-  if (uscfEq < 600) {
+  if (uscfEq < 500) {
     return {
       step: 1,
-      label: 'U600',
+      label: 'Beginner',
+      category: 'Beginner',
       focusAreas: [
-        'Board/pieces',
-        'basic moves',
-        'attack/capture',
-        'check/checkmate basics',
+        'Board awareness',
+        'how pieces move',
+        'basic captures',
+        'check and checkmate concepts',
         'castling',
-        'pawn rules',
-        'basic mating patterns',
-      ],
-    };
-  }
-  if (uscfEq < 1200) {
-    return {
-      step: 2,
-      label: 'U1200',
-      focusAreas: [
-        'Tactics fundamentals',
-        'double attack',
-        'pins',
-        'eliminating defence',
-        'mate in two',
-        'discovered attack',
-        'basic pawn endings',
+        'pawn rules (promotion, en passant)',
+        'simple mating patterns (back-rank, two-rook)',
       ],
     };
   }
   if (uscfEq < 1400) {
     return {
-      step: 3,
-      label: 'U1400',
+      step: 2,
+      label: 'Intermediate',
+      category: 'Intermediate',
       focusAreas: [
-        'Discovered/double check',
-        'attack on pinned piece',
-        'X-ray',
-        'key squares',
-        'pawn square rule',
-        'defending against double attack',
-        'mini plans',
-      ],
-    };
-  }
-  if (uscfEq < 1600) {
-    return {
-      step: 4,
-      label: 'U1600',
-      focusAreas: [
-        'Preparatory moves',
-        'interfering',
-        'luring',
-        'blocking',
-        'pin tactics',
-        'passed pawns',
-        'attack on castled king',
-        '7th rank',
-        'weak pawns',
+        'Tactics fundamentals',
+        'forks and double attacks',
+        'pins and skewers',
+        'discovered attack',
+        'mate in 1–2',
+        'basic pawn endings',
+        'piece coordination',
+        'opening principles (center control, development, king safety)',
       ],
     };
   }
   if (uscfEq < 1800) {
     return {
-      step: 5,
-      label: 'U1800',
+      step: 3,
+      label: 'Advanced',
+      category: 'Advanced',
       focusAreas: [
-        'Pawn structure',
-        'strong squares',
-        'open files',
-        'rook endings',
-        'strategic play',
-        'breakthrough',
-        'pawn races',
-        'defending complex positions',
-      ],
-    };
-  }
-  if (uscfEq < 2000) {
-    return {
-      step: 6,
-      label: 'U2000',
-      focusAreas: [
-        'King safety',
-        'mobility',
-        'deep strategy',
-        'bishop vs knight',
-        'king attacks',
-        'complex endgames',
-        'advanced defending',
+        'Pawn structure and weak squares',
+        'open files and rook activity',
+        'attack on the castled king',
+        'strategic planning',
+        'rook and queen endgames',
+        'multi-move tactics (interference, luring, blocking)',
+        'passed pawn technique',
+        'pawn breaks and breakthrough',
       ],
     };
   }
   return {
-    step: 7,
-    label: 'Expert',
+    step: 4,
+    label: 'Competitive/Elite',
+    category: 'Competitive/Elite',
     focusAreas: [
-      'King safety',
-      'mobility',
-      'deep strategy',
-      'bishop vs knight',
-      'king attacks',
-      'complex endgames',
-      'advanced defending',
+      'King safety evaluation',
+      'prophylaxis and positional restraint',
+      'deep strategic planning',
+      'bishop vs knight imbalances',
+      'complex endgame technique',
+      'outposts and piece coordination',
+      'advanced defensive resources',
+      'opening preparation and transpositions',
     ],
   };
 }

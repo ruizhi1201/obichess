@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import ScoresheetUploader from './ScoresheetUploader';
 
 const SAMPLE_PGN = `[Event "FIDE World Championship 2023"]
 [Site "Astana, Kazakhstan"]
@@ -13,19 +14,20 @@ const SAMPLE_PGN = `[Event "FIDE World Championship 2023"]
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 O-O 8. c3 d5 9. exd5 Nxd5 10. Nxe5 Nxe5 11. Rxe5 c6 12. d4 Bd6 13. Re1 Qh4 14. g3 Qh3 15. Be3 Bg4 16. Qd3 Rae8 17. Nd2 Re6 18. a4 bxa4 19. Bxa4 Nxe3 20. Rxe3 Rxe3 21. fxe3 f5 22. Qf1 Qxf1+ 23. Rxf1 f4 24. exf4 Rxf4 25. Rxf4 Bxf4 26. Nf3 Bxf3 27. Bxc6 Be4 28. Ba4 Kf7 29. Kf2 Ke6 30. Ke3 Bh1 31. b4 Be7 32. c4 Bg2 33. b5 axb5 34. cxb5 Bf3 35. Kd3 Kd5 36. b6 Bxb6 37. Bb3+ Kc6 38. Bxg8 h5 39. Bb3 Bh1 40. Ke3 Bd5 41. Kf4 Bc4 42. Be6 Bd5 43. Bg8 h4 44. gxh4 Bh1 45. Ke3 Bg2 46. Kd3 Bh1 1/2-1/2`;
 
 interface PGNUploaderProps {
-  onLoad: (pgn: string) => void;
+  onLoad: (pgn: string, trainingFocus?: string) => void;
 }
 
 export default function PGNUploader({ onLoad }: PGNUploaderProps) {
-  const [mode, setMode] = useState<'paste' | 'file'>('paste');
+  const [mode, setMode] = useState<'paste' | 'file' | 'photo'>('paste');
   const [pgn, setPgn] = useState('');
+  const [trainingFocus, setTrainingFocus] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = pgn.trim();
     if (trimmed) {
-      onLoad(trimmed);
+      onLoad(trimmed, trainingFocus.trim() || undefined);
     }
   };
 
@@ -37,15 +39,36 @@ export default function PGNUploader({ onLoad }: PGNUploaderProps) {
     reader.onload = (ev) => {
       const content = ev.target?.result as string;
       if (content) {
-        onLoad(content);
+        onLoad(content, trainingFocus.trim() || undefined);
       }
     };
     reader.readAsText(file);
   };
 
   const loadSample = () => {
-    onLoad(SAMPLE_PGN);
+    onLoad(SAMPLE_PGN, trainingFocus.trim() || undefined);
   };
+
+  // Shared training focus input rendered in all modes
+  const TrainingFocusInput = () => (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+        🎯 <span>Training Focus</span>
+        <span className="text-zinc-600 font-normal">(optional)</span>
+      </label>
+      <input
+        type="text"
+        value={trainingFocus}
+        onChange={(e) => setTrainingFocus(e.target.value)}
+        placeholder='e.g. "Focus on endgame", "Reduce blunders", "Plan better"'
+        maxLength={120}
+        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 transition-colors"
+      />
+      <p className="text-[11px] text-zinc-600">
+        Obi will tailor the analysis insights to your specific goal.
+      </p>
+    </div>
+  );
 
   return (
     <div className="w-full max-w-2xl mx-auto">
@@ -78,9 +101,24 @@ export default function PGNUploader({ onLoad }: PGNUploaderProps) {
           >
             Upload File
           </button>
+          <button
+            onClick={() => setMode('photo')}
+            className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === 'photo'
+                ? 'bg-zinc-700 text-zinc-100'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            📷 Photo
+          </button>
         </div>
 
-        {mode === 'paste' ? (
+        {mode === 'photo' ? (
+          <div className="space-y-4">
+            <ScoresheetUploader onLoad={(pgn) => onLoad(pgn, trainingFocus.trim() || undefined)} />
+            <TrainingFocusInput />
+          </div>
+        ) : mode === 'paste' ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <textarea
               value={pgn}
@@ -88,6 +126,7 @@ export default function PGNUploader({ onLoad }: PGNUploaderProps) {
               placeholder={`[Event "My Game"]\n[White "Me"]\n[Black "Opponent"]\n\n1. e4 e5 2. Nf3 Nc6 ...`}
               className="w-full h-48 bg-zinc-800 border border-zinc-700 rounded-xl p-4 text-sm text-zinc-200 placeholder-zinc-600 font-mono focus:outline-none focus:border-amber-500/50 resize-none transition-colors"
             />
+            <TrainingFocusInput />
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -105,7 +144,7 @@ export default function PGNUploader({ onLoad }: PGNUploaderProps) {
               </button>
             </div>
           </form>
-        ) : (
+        ) : mode === 'file' ? (
           <div className="space-y-4">
             <div
               onClick={() => fileRef.current?.click()}
@@ -122,6 +161,7 @@ export default function PGNUploader({ onLoad }: PGNUploaderProps) {
               onChange={handleFile}
               className="hidden"
             />
+            <TrainingFocusInput />
             <button
               onClick={loadSample}
               className="w-full py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 rounded-xl text-sm transition-colors"
@@ -129,7 +169,7 @@ export default function PGNUploader({ onLoad }: PGNUploaderProps) {
               Or load a sample game
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

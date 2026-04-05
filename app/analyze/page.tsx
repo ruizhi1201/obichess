@@ -207,6 +207,7 @@ export default function AnalyzePage() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [pendingWhiteName, setPendingWhiteName] = useState('White');
   const [pendingBlackName, setPendingBlackName] = useState('Black');
+  const [trainingFocus, setTrainingFocus] = useState<string | undefined>(undefined);
   const [exploreMode, setExploreMode] = useState(false);
   const [exploreFen, setExploreFen] = useState<string | null>(null);
   const [exploreMoveEval, setExploreMoveEval] = useState<{ eval: number; bestMove: string } | null>(null);
@@ -234,7 +235,7 @@ export default function AnalyzePage() {
     : moves[currentMoveIndex]?.fenAfter || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
   // Step 1: PGN loaded → check gates → show profile modal
-  const handlePGNLoaded = useCallback(async (pgn: string) => {
+  const handlePGNLoaded = useCallback(async (pgn: string, focus?: string) => {
     if (isPro) {
       // fall through
     } else if (!user) {
@@ -243,6 +244,7 @@ export default function AnalyzePage() {
       if (userCount >= FREE_ANALYSIS_LIMIT) { setShowUpgradeGate(true); return; }
     }
     setPendingPGN(pgn);
+    setTrainingFocus(focus);
     setShowProfileModal(true);
   }, [isPro, user, guestCount, userCount]);
 
@@ -606,6 +608,8 @@ export default function AnalyzePage() {
                     onSelectMove={handleMoveSelect}
                     onStartReview={handleStartReview}
                     userColor={userColor}
+                    playerProfile={playerProfile}
+                    trainingFocus={trainingFocus}
                   />
                 ) : (
                   <CoachPanel

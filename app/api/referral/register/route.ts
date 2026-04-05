@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { checkAndGrantReferralRewards } from '@/lib/referral-rewards';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,18 +25,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Find referrer by code
+    // Find referrer by code (check both referral_code on profiles and affiliate_code on affiliates)
     const { data: referrer } = await supabase
       .from('profiles')
       .select('id')
       .eq('referral_code', refCode)
       .single();
 
-    if (!referrer) {
+    // Also check affiliate_code
+    let referrerId: string | null = referrer?.id || null;
+    let isAffiliateLink = false;
+
+    if (!referrerId) {
+      const { data: affiliate } = await supabase
+        .from('affiliates')
+        .select('user_id, status')
+        .eq('affiliate_code', refCode)
+        .single();
+
+      if (affiliate && affiliate.status === 'active') {
+        referrerId = affiliate.user_id;
+        isAffiliateLink = true;
+      }
+    }
+
+    if (!referrerId) {
       return NextResponse.json({ error: 'Invalid referral code' }, { status: 404 });
     }
 
-    if (referrer.id === user.id) {
+    if (referrerId === user.id) {
       return NextResponse.json({ error: 'Cannot refer yourself' }, { status: 400 });
     }
 
@@ -50,39 +68,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Already processed' });
     }
 
-    // Create referral record
+    // Create referral record — status 'registered' since this is a free signup
     await supabase.from('referrals').insert({
-      referrer_id: referrer.id,
+      referrer_id: referrerId,
       referred_id: user.id,
-      status: 'pending',
+      status: 'registered', // all signups count; 'completed' = became paid
+      reward_issued: false,
     });
 
-    // Give referred user 14-day Pro trial
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 14);
+    // If via affiliate link, also record in affiliate_referrals
+    if (isAffiliateLink) {
+      await supabase.from('affiliate_referrals').insert({
+        affiliate_id: referrerId,
+        referred_user_id: user.id,
+        is_paid: false,
+      });
+    }
 
+    // Store who referred them
     await supabase
       .from('profiles')
-      .update({
-        referred_by: referrer.id,
-        pro_trial_until: trialEnd.toISOString(),
-      })
+      .update({ referred_by: referrerId })
       .eq('id', user.id);
 
-    // Update subscription record to reflect trial
-    await supabase
-      .from('subscriptions')
-      .upsert({
-        user_id: user.id,
-        plan: 'pro',
-        status: 'trialing',
-        current_period_end: trialEnd.toISOString(),
-      }, { onConflict: 'user_id' });
+    // Check and grant referral rewards to referrer based on total signups
+    await checkAndGrantReferralRewards(supabase, referrerId);
 
     return NextResponse.json({
       success: true,
-      trialEnd: trialEnd.toISOString(),
-      message: '14-day Pro trial activated!',
+      message: 'Referral registered!',
     });
   } catch (err) {
     console.error('Referral register error:', err);

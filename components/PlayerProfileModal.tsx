@@ -162,8 +162,8 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-zinc-100 truncate">{p.name}</div>
                         <div className="text-xs text-zinc-400">
-                          {p.ratingType} {p.rating} · ≈{p.uscfEquivalent} USCF · Step{' '}
-                          {skillStep.step} {skillStep.label}
+                          {p.ratingType} {p.rating} · ≈{p.uscfEquivalent} USCF ·{' '}
+                          <span className="text-amber-400/80">{skillStep.label}</span>
                         </div>
                       </div>
                       {isSelected && (
@@ -287,8 +287,12 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
                     <div className="text-xs text-zinc-400">
                       Skill Level:{' '}
                       <span className="text-amber-400 font-semibold">
-                        Step {liveStep.step} — {liveStep.label}
+                        {liveStep.label}
                       </span>
+                      {liveStep.step === 1 && <span className="text-zinc-500"> · under 500 USCF</span>}
+                      {liveStep.step === 2 && <span className="text-zinc-500"> · 500–1399 USCF</span>}
+                      {liveStep.step === 3 && <span className="text-zinc-500"> · 1400–1799 USCF</span>}
+                      {liveStep.step === 4 && <span className="text-zinc-500"> · 1800+ USCF</span>}
                     </div>
                   </div>
                 )}

@@ -9,9 +9,48 @@ interface MoveSnapshot {
   bestMoveSan?: string;
 }
 
+interface SkillStepInfo {
+  step: number;
+  label: string;
+  uscfEquivalent?: number;
+}
+
+// Returns depth/style guidance string based on skill step
+function buildSkillContext(skillStep: SkillStepInfo | null): string {
+  if (!skillStep) return '';
+  const { step, label, uscfEquivalent } = skillStep;
+  const rating = uscfEquivalent ? ` (~${uscfEquivalent} USCF)` : '';
+
+  if (step === 1) {
+    // Beginner (<500)
+    return `SKILL LEVEL: Beginner (${label}${rating}). Keep language very simple and encouraging. Avoid chess jargon — explain all concepts in plain terms. Focus on ONE most impactful lesson only. Celebrate good moves warmly to build confidence.`;
+  }
+  if (step === 2) {
+    // Intermediate (500–1399)
+    return `SKILL LEVEL: Intermediate (${label}${rating}). Use standard chess terminology but briefly explain tactical concepts. Reference 1–2 critical turning points. Balance specific improvement tips with encouragement.`;
+  }
+  if (step === 3) {
+    // Advanced (1400–1799)
+    return `SKILL LEVEL: Advanced (${label}${rating}). Be direct and specific. Reference pawn structures, open files, and piece coordination. Highlight tactical patterns and strategic nuances. Skip basics — this player knows the fundamentals.`;
+  }
+  // Competitive/Elite (1800+)
+  return `SKILL LEVEL: Competitive/Elite (${label}${rating}). Be precise and concise — treat the player as a strong club player or tournament competitor. Mention specific move sequences, prophylaxis, outposts, zugzwang, imbalances, and advanced endgame technique where relevant. No hand-holding.`;
+}
+
+// Returns focus directive string based on training focus
+function buildFocusContext(trainingFocus: string | null): string {
+  if (!trainingFocus?.trim()) return '';
+  return `TRAINING FOCUS: The player set a specific training focus: "${trainingFocus.trim()}". Prioritize insights related to this goal throughout the analysis. If the game contains examples (positive or negative) relevant to this focus, highlight them prominently. If this focus area wasn't tested in the game, note that briefly and suggest how to practice it.`;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { whiteAcc, blackAcc, whiteCounts, blackCounts, userColor, whiteName, blackName, totalMoves, moves, isFirstToday, recentAccuracies } = await req.json();
+    const {
+      whiteAcc, blackAcc, whiteCounts, blackCounts,
+      userColor, whiteName, blackName, totalMoves, moves,
+      isFirstToday, recentAccuracies,
+      trainingFocus, skillStep,
+    } = await req.json();
 
     const userName = userColor === 'w' ? whiteName : blackName;
     const userAcc = userColor === 'w' ? whiteAcc : blackAcc;
@@ -22,10 +61,12 @@ export async function POST(req: NextRequest) {
       (m) => m.color === userColor && ['inaccuracy', 'mistake', 'blunder', 'best'].includes(m.classification)
     );
 
-    // Pick top key moments: all blunders/mistakes + up to 3 best moves as positive examples
+    // For advanced/elite players, include more detail; for beginner/intermediate, limit to top 3 mistakes
+    const isAdvanced = skillStep && skillStep.step >= 3; // Advanced (1400+) or Competitive/Elite (1800+)
     const negatives = userMoves.filter(m => ['blunder', 'mistake', 'inaccuracy'].includes(m.classification));
-    const positives = userMoves.filter(m => m.classification === 'best').slice(0, 3);
-    const keyMoves = [...positives, ...negatives].sort((a, b) => a.moveNumber - b.moveNumber);
+    const filteredNegatives = isAdvanced ? negatives : negatives.slice(0, 3); // beginner/intermediate: top 3 only
+    const positives = userMoves.filter(m => m.classification === 'best').slice(0, isAdvanced ? 4 : 2);
+    const keyMoves = [...positives, ...filteredNegatives].sort((a, b) => a.moveNumber - b.moveNumber);
 
     const keyMovesText = keyMoves.length > 0
       ? '\nKey moves:\n' + keyMoves.map(m => {
@@ -51,7 +92,19 @@ export async function POST(req: NextRequest) {
       sessionContext = `CONTEXT: This is NOT the first game today. In 1 brief sentence at the very start, mention that ${comparison}. Keep it casual and conversational, like a coach glancing at a scoreboard. Don't be harsh if it's worse — stay encouraging.`;
     }
 
-    const prompt = `${sessionContext ? sessionContext + '\n\n' : ''}Analyze this chess game performance for player "${userName}" playing as ${userColor === 'w' ? 'White' : 'Black'}:
+    // Build skill and focus context blocks
+    const skillContext = buildSkillContext(skillStep as SkillStepInfo | null);
+    const focusContext = buildFocusContext(trainingFocus as string | null);
+
+    // Compose all context sections
+    const contextSections = [sessionContext, skillContext, focusContext].filter(Boolean).join('\n\n');
+
+    // Adjust analysis depth instructions based on skill level
+    const depthInstruction = isAdvanced
+      ? 'Be concise and direct — skip obvious commentary. Prioritize concrete move sequences, tactical patterns, and strategic nuances. Each section should feel like advice from a strong club player or coach.'
+      : 'Keep explanations clear, simple, and accessible. Focus on the single most impactful lesson from this game. Use plain language and avoid overwhelming the player with multiple points at once.';
+
+    const prompt = `${contextSections ? contextSections + '\n\n' : ''}Analyze this chess game performance for player "${userName}" playing as ${userColor === 'w' ? 'White' : 'Black'}:
 
 Accuracy: ${userAcc.toFixed(1)}%
 Total moves: ${totalMoves}
@@ -62,6 +115,8 @@ Mistakes: ${userCounts.mistake}
 Blunders: ${userCounts.blunder}
 ${keyMovesText}
 
+${depthInstruction}
+
 Provide a brief game analysis in exactly this format (use these exact headers, on their own lines):
 
 ✅ What you did well:
@@ -71,7 +126,7 @@ Provide a brief game analysis in exactly this format (use these exact headers, o
 [2-3 specific areas to work on. Reference specific move numbers from the key moves list where applicable, e.g. "Move 7 d5 was an inaccuracy — consider ... instead"]
 
 📚 Suggested study topics:
-[3-4 specific chess topics to study based on the patterns seen]
+[3-4 specific chess topics to study based on the patterns seen${trainingFocus ? `, especially as they relate to the player's training focus: "${trainingFocus}"` : ''}]
 
 Keep each section to 2-3 sentences max. Be specific and cite move numbers where possible.`;
 
@@ -81,7 +136,7 @@ Keep each section to 2-3 sentences max. Be specific and cite move numbers where 
         { role: 'system', content: COACH_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 500,
+      max_tokens: 600,
       temperature: 0.7,
     });
 

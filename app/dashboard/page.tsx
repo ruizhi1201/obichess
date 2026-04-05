@@ -63,6 +63,11 @@ export default function DashboardPage() {
           <Link href="/analyze" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
             Analyze
           </Link>
+          {user && (
+            <Link href="/dashboard/referrals" className="text-zinc-400 hover:text-amber-400 text-sm transition-colors flex items-center gap-1">
+              🎁 Share & Earn
+            </Link>
+          )}
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-zinc-400">{user.email}</span>
@@ -100,7 +105,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div>
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-6">
               <h1 className="text-2xl font-bold">My Games</h1>
               <Link
                 href="/analyze"
@@ -109,6 +114,21 @@ export default function DashboardPage() {
                 + Analyze New Game
               </Link>
             </div>
+
+            {/* Share & Earn prompt */}
+            <Link
+              href="/dashboard/referrals"
+              className="flex items-center justify-between bg-zinc-900 border border-amber-500/20 hover:border-amber-500/40 rounded-xl p-4 mb-8 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🎁</span>
+                <div>
+                  <div className="font-medium text-sm">Share Obi-Chess, earn free membership</div>
+                  <div className="text-zinc-500 text-xs mt-0.5">3 referrals = 1 month free · 20 referrals = 1 year family plan</div>
+                </div>
+              </div>
+              <span className="text-zinc-600 group-hover:text-amber-400 transition-colors text-sm">→</span>
+            </Link>
 
             {games.length === 0 ? (
               <div className="text-center py-16 text-zinc-500">
