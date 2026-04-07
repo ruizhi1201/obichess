@@ -11,9 +11,10 @@ interface CoachPanelProps {
   currentFen: string;
   userColor: 'w' | 'b';
   playerProfile?: PlayerProfile | null;
+  explanationCache?: Map<string, string>; // uci -> explanation, pre-generated
 }
 
-export default function CoachPanel({ move, currentFen, userColor, playerProfile }: CoachPanelProps) {
+export default function CoachPanel({ move, currentFen, userColor, playerProfile, explanationCache }: CoachPanelProps) {
   const { tier: subscriptionTier } = useSubscription();
   const [explanation, setExplanation] = useState<string>('');
   const [explanationLoading, setExplanationLoading] = useState(false);
@@ -92,7 +93,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
     }
   }, [userHasInteracted, pendingAutoPlay]);
 
-  // Fetch explanation when move changes
+  // Fetch explanation when move changes — check cache first for instant load
   useEffect(() => {
     if (!move) {
       setExplanation('');
@@ -102,9 +103,20 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
     if (move.san === lastMoveSan) return;
     setLastMoveSan(move.san);
     setMessages([]); // reset chat when move changes
+
+    // Check cache first — instant load if available
+    const cached = move.uci ? explanationCache?.get(move.uci) : undefined;
+    if (cached) {
+      setExplanation(cached);
+      setExplanationLoading(false);
+      if (soundEnabled) playTts(cached, true);
+      return;
+    }
+
+    // Cache miss — fetch from API
     fetchExplanation();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [move?.uci, move?.fenBefore]);
+  }, [move?.uci, move?.fenBefore, explanationCache]);
 
   const fetchExplanation = async () => {
     if (!move) return;

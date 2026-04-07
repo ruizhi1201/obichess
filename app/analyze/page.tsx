@@ -212,6 +212,7 @@ export default function AnalyzePage() {
   const [exploreFen, setExploreFen] = useState<string | null>(null);
   const [exploreMoveEval, setExploreMoveEval] = useState<{ eval: number; bestMove: string } | null>(null);
   const [exploreLastMoveSan, setExploreLastMoveSan] = useState<string | null>(null);
+  const [explanationCache, setExplanationCache] = useState<Map<string, string>>(new Map());
 
 
   useEffect(() => {
@@ -330,12 +331,62 @@ export default function AnalyzePage() {
 
       setMoves(analyzedMoves);
       setAnalysisComplete(true);
+
+      // Batch pre-generate AI explanations in background for instant navigation
+      // Priority: blunders > mistakes > inaccuracies > all others
+      const PRIORITY = ['blunder', 'mistake', 'inaccuracy', 'good', 'best'];
+      const sortedMoves = [...analyzedMoves].sort((a, b) => {
+        return PRIORITY.indexOf(a.classification ?? 'best') - PRIORITY.indexOf(b.classification ?? 'best');
+      });
+
+      const { getSkillStep } = await import('@/lib/player-profiles');
+      const skillPayload = playerProfile
+        ? (() => {
+            const s = getSkillStep(playerProfile.uscfEquivalent);
+            return { playerStep: s.step, playerUscfEquivalent: playerProfile.uscfEquivalent, playerLabel: s.label, focusAreas: s.focusAreas };
+          })()
+        : {};
+
+      // Run in background — 3 concurrent requests at a time
+      const cache = new Map<string, string>();
+      const CONCURRENCY = 3;
+      for (let i = 0; i < sortedMoves.length; i += CONCURRENCY) {
+        const batch = sortedMoves.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(async (m) => {
+          if (!m.uci) return;
+          try {
+            const res = await fetch('/api/explain', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fenBefore: m.fenBefore,
+                fenAfter: m.fenAfter,
+                moveSan: m.san,
+                moveUci: m.uci,
+                evalBefore: m.evalBefore,
+                evalAfter: m.evalAfter,
+                bestMoveSan: m.bestMoveSan,
+                classification: m.classification,
+                userColor: color,
+                moveColor: m.color,
+                ...skillPayload,
+              }),
+            });
+            const data = await res.json();
+            if (data.explanation) {
+              cache.set(m.uci, data.explanation);
+              // Update cache incrementally so first moves are available ASAP
+              setExplanationCache(new Map(cache));
+            }
+          } catch { /* ignore individual failures */ }
+        }));
+      }
     } catch (e) {
       console.error('Stockfish analysis failed:', e);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [pendingPGN, isPro, user]);
+  }, [pendingPGN, isPro, user, playerProfile]);
 
   const handleMoveSelect = useCallback((index: number) => {
     setCurrentMoveIndex(index);
@@ -617,6 +668,7 @@ export default function AnalyzePage() {
                     currentFen={currentFen}
                     userColor={userColor}
                     playerProfile={playerProfile}
+                    explanationCache={explanationCache}
                   />
                 )}
               </div>
