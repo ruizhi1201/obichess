@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { openai, COACH_SYSTEM_PROMPT } from '@/lib/openai';
+import { getModelConfig } from '@/lib/ai-models';
 
 interface MoveSnapshot {
   moveNumber: number;
@@ -130,8 +131,10 @@ Provide a brief game analysis in exactly this format (use these exact headers, o
 
 Keep each section to 2-3 sentences max. Be specific and cite move numbers where possible.`;
 
+    const { subscriptionTier } = body;
+    const modelConfig = getModelConfig(subscriptionTier);
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: modelConfig.model,
       messages: [
         { role: 'system', content: COACH_SYSTEM_PROMPT },
         { role: 'user', content: prompt },

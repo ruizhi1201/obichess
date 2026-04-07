@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Chess } from 'chess.js';
 import { openai, COACH_SYSTEM_PROMPT } from '@/lib/openai';
+import { getModelConfig } from '@/lib/ai-models';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -44,7 +45,7 @@ async function getLichessEval(fen: string): Promise<{
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, fen, history, userColor, playerStep, playerUscfEquivalent, playerLabel, focusAreas } = await req.json() as {
+    const { message, fen, history, userColor, playerStep, playerUscfEquivalent, playerLabel, focusAreas, subscriptionTier } = await req.json() as {
       message: string;
       fen: string;
       history: ChatMessage[];
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
       playerUscfEquivalent?: number;
       playerLabel?: string;
       focusAreas?: string[];
+      subscriptionTier?: string;
     };
 
     if (!message || !fen) {
@@ -168,11 +170,12 @@ The current board position (FEN): ${fen}${engineContext}`;
       { role: 'user' as const, content: message },
     ];
 
+    const modelConfig = getModelConfig(subscriptionTier);
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: modelConfig.model,
       messages,
-      max_tokens: 300,
-      temperature: 0.5,
+      max_tokens: modelConfig.maxTokens,
+      temperature: modelConfig.temperature,
     });
 
     const reply = completion.choices[0].message.content;
