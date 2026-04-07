@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
       playerUscfEquivalent,
       playerLabel,
       focusAreas,
+      subscriptionTier,
     } = await req.json();
 
     if (!fenBefore || !moveSan) {
@@ -76,7 +77,6 @@ export async function POST(req: NextRequest) {
       prompt += `\n\nThis player is rated ${playerUscfEquivalent} USCF (${tier}). In addition to the move explanation, add 1-2 sentences of POSITIONAL insight: discuss pawn structure implications, piece coordination, weak squares, open files, or long-term strategic considerations that this move creates or ignores. Use proper chess terminology.`;
     }
 
-    const { subscriptionTier } = body;
     const modelConfig = getModelConfig(subscriptionTier);
     const completion = await openai.chat.completions.create({
       model: modelConfig.model,

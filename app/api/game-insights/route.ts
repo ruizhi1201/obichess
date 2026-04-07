@@ -46,12 +46,13 @@ function buildFocusContext(trainingFocus: string | null): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
     const {
       whiteAcc, blackAcc, whiteCounts, blackCounts,
       userColor, whiteName, blackName, totalMoves, moves,
       isFirstToday, recentAccuracies,
-      trainingFocus, skillStep,
-    } = await req.json();
+      trainingFocus, skillStep, subscriptionTier,
+    } = body;
 
     const userName = userColor === 'w' ? whiteName : blackName;
     const userAcc = userColor === 'w' ? whiteAcc : blackAcc;
@@ -131,7 +132,6 @@ Provide a brief game analysis in exactly this format (use these exact headers, o
 
 Keep each section to 2-3 sentences max. Be specific and cite move numbers where possible.`;
 
-    const { subscriptionTier } = body;
     const modelConfig = getModelConfig(subscriptionTier);
     const completion = await openai.chat.completions.create({
       model: modelConfig.model,
