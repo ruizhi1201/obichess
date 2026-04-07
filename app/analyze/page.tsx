@@ -331,8 +331,9 @@ export default function AnalyzePage() {
 
       setMoves(analyzedMoves);
       setAnalysisComplete(true);
+      setIsAnalyzing(false); // ← unblock UI immediately after Stockfish is done
 
-      // Batch pre-generate AI explanations in background for instant navigation
+      // Pre-generate AI explanations in a true background task (non-blocking)
       // Priority: blunders > mistakes > inaccuracies > all others
       const PRIORITY = ['blunder', 'mistake', 'inaccuracy', 'good', 'best'];
       const sortedMoves = [...analyzedMoves].sort((a, b) => {
@@ -347,43 +348,44 @@ export default function AnalyzePage() {
           })()
         : {};
 
-      // Run in background — 3 concurrent requests at a time
-      const cache = new Map<string, string>();
-      const CONCURRENCY = 3;
-      for (let i = 0; i < sortedMoves.length; i += CONCURRENCY) {
-        const batch = sortedMoves.slice(i, i + CONCURRENCY);
-        await Promise.all(batch.map(async (m) => {
-          if (!m.uci) return;
-          try {
-            const res = await fetch('/api/explain', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                fenBefore: m.fenBefore,
-                fenAfter: m.fenAfter,
-                moveSan: m.san,
-                moveUci: m.uci,
-                evalBefore: m.evalBefore,
-                evalAfter: m.evalAfter,
-                bestMoveSan: m.bestMoveSan,
-                classification: m.classification,
-                userColor: color,
-                moveColor: m.color,
-                ...skillPayload,
-              }),
-            });
-            const data = await res.json();
-            if (data.explanation) {
-              cache.set(m.uci, data.explanation);
-              // Update cache incrementally so first moves are available ASAP
-              setExplanationCache(new Map(cache));
-            }
-          } catch { /* ignore individual failures */ }
-        }));
-      }
+      // Fire and forget — do NOT await this, so UI is immediately interactive
+      (async () => {
+        const cache = new Map<string, string>();
+        const CONCURRENCY = 3;
+        for (let i = 0; i < sortedMoves.length; i += CONCURRENCY) {
+          const batch = sortedMoves.slice(i, i + CONCURRENCY);
+          await Promise.all(batch.map(async (m) => {
+            if (!m.uci) return;
+            try {
+              const res = await fetch('/api/explain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fenBefore: m.fenBefore,
+                  fenAfter: m.fenAfter,
+                  moveSan: m.san,
+                  moveUci: m.uci,
+                  evalBefore: m.evalBefore,
+                  evalAfter: m.evalAfter,
+                  bestMoveSan: m.bestMoveSan,
+                  classification: m.classification,
+                  userColor: color,
+                  moveColor: m.color,
+                  ...skillPayload,
+                }),
+              });
+              const data = await res.json();
+              if (data.explanation) {
+                cache.set(m.uci, data.explanation);
+                // Update cache incrementally so moves are available as they complete
+                setExplanationCache(new Map(cache));
+              }
+            } catch { /* ignore individual failures */ }
+          }));
+        }
+      })();
     } catch (e) {
       console.error('Stockfish analysis failed:', e);
-    } finally {
       setIsAnalyzing(false);
     }
   }, [pendingPGN, isPro, user, playerProfile]);
