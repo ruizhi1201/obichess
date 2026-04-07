@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { type AnalyzedMove, type MoveClassification } from '@/lib/chess-utils';
 import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
+import { useSubscription } from '@/lib/use-subscription';
 
 interface GameSummaryProps {
   moves: AnalyzedMove[];
@@ -68,6 +69,7 @@ export default function GameSummary({
   playerProfile,
   trainingFocus,
 }: GameSummaryProps) {
+  const { tier: subscriptionTier } = useSubscription();
   const [insights, setInsights] = useState<string | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState(false);
@@ -120,6 +122,7 @@ export default function GameSummary({
           isFirstToday,
           recentAccuracies,
           trainingFocus: trainingFocus || null,
+          subscriptionTier,
           skillStep: skillStep ? { step: skillStep.step, label: skillStep.label, uscfEquivalent: playerProfile?.uscfEquivalent } : null,
           moves: moves.map(m => ({
             moveNumber: m.moveNumber,

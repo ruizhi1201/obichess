@@ -2,12 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { type ChatMessage } from '@/app/api/chat/route';
+import { useSubscription } from '@/lib/use-subscription';
 
 interface ChatPanelProps {
   currentFen: string;
 }
 
 export default function ChatPanel({ currentFen }: ChatPanelProps) {
+  const { tier: subscriptionTier } = useSubscription();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,6 +44,7 @@ export default function ChatPanel({ currentFen }: ChatPanelProps) {
           message: text,
           fen: currentFen,
           history: messages,
+          subscriptionTier,
         }),
       });
 

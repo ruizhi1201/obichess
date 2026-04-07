@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { type AnalyzedMove, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
 import { type ChatMessage } from '@/app/api/chat/route';
 import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
+import { useSubscription } from '@/lib/use-subscription';
 
 interface CoachPanelProps {
   move: AnalyzedMove | null;
@@ -13,6 +14,7 @@ interface CoachPanelProps {
 }
 
 export default function CoachPanel({ move, currentFen, userColor, playerProfile }: CoachPanelProps) {
+  const { tier: subscriptionTier } = useSubscription();
   const [explanation, setExplanation] = useState<string>('');
   const [explanationLoading, setExplanationLoading] = useState(false);
   const [ttsLoading, setTtsLoading] = useState(false);
@@ -134,6 +136,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
           classification: move.classification,
           userColor,
           moveColor: move.color,
+          subscriptionTier,
           ...skillPayload,
         }),
       });
@@ -181,7 +184,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile 
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, fen: currentFen, history: messages, userColor, ...skillPayload }),
+        body: JSON.stringify({ message: text, fen: currentFen, history: messages, userColor, subscriptionTier, ...skillPayload }),
       });
       const data = await res.json();
       setMessages([...newHistory, {
