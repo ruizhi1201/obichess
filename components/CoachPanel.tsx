@@ -1,6 +1,26 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+
+const VOICES = [
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', desc: 'Smooth, Trustworthy (American)', emoji: '🎙️' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will', desc: 'Relaxed Optimist (American)', emoji: '😊' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', desc: 'Deep, Resonant (American)', emoji: '🔊' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', desc: 'Charming, Down-to-Earth (American)', emoji: '🤝' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', desc: 'Energetic, Confident (Australian)', emoji: '⚡' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', desc: 'Warm Storyteller (British)', emoji: '📖' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', desc: 'Steady Broadcaster (British)', emoji: '📻' },
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', desc: 'Wise, Mature (American)', emoji: '🧠' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', desc: 'Laid-Back, Casual (American)', emoji: '😎' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', desc: 'Reassuring, Confident (American)', emoji: '✨' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', desc: 'Clear Educator (British)', emoji: '🎓' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', desc: 'Professional (American)', emoji: '💼' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', desc: 'Playful, Warm (American)', emoji: '🌟' },
+  { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella', desc: 'Bright, Professional (American)', emoji: '🌸' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', desc: 'Velvety Actress (British)', emoji: '🎭' },
+];
+const DEFAULT_VOICE_ID = 'cjVigY5qzO86Huf0OWal'; // Eric
+const VOICE_STORAGE_KEY = 'obi_voice_preference';
 import { type AnalyzedMove, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
 import { type ChatMessage } from '@/app/api/chat/route';
 import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
@@ -29,6 +49,8 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const [pendingAutoPlay, setPendingAutoPlay] = useState<string | null>(null);
   const [isTtsPlaying, setIsTtsPlaying] = useState(false);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(DEFAULT_VOICE_ID);
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -37,6 +59,25 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
   const inputRef = useRef<HTMLInputElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+
+  // Load saved voice preference
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(VOICE_STORAGE_KEY);
+      if (saved && VOICES.find(v => v.id === saved)) setSelectedVoiceId(saved);
+    }
+  }, []);
+
+  // Close voice picker on outside click
+  useEffect(() => {
+    if (!showVoicePicker) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-voice-picker]')) setShowVoicePicker(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showVoicePicker]);
 
   // Auto-scroll to bottom — scroll ONLY within the chat container, never the page
   useEffect(() => {
@@ -64,7 +105,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voiceId: selectedVoiceId }),
       });
       const contentType = res.headers.get('Content-Type');
       if (contentType?.includes('audio')) {
@@ -96,7 +137,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     } finally {
       setTtsLoading(false);
     }
-  }, [userHasInteracted, stopTts]);
+  }, [userHasInteracted, stopTts, selectedVoiceId]);
 
   // Play pending audio when user first interacts
   const handleUserInteraction = useCallback(() => {
@@ -355,7 +396,44 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
           </span>
         )}
         {/* Audio toggles — always visible, pinned to right */}
-        <div className="flex items-center gap-1 ml-auto shrink-0">
+        <div className="flex items-center gap-1 ml-auto shrink-0 relative" data-voice-picker>
+          {/* Voice picker button */}
+          {soundEnabled && (
+            <button
+              onClick={() => setShowVoicePicker(v => !v)}
+              title="Choose voice"
+              className="text-xs px-1.5 py-0.5 rounded-md bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors flex items-center gap-0.5"
+            >
+              {VOICES.find(v => v.id === selectedVoiceId)?.emoji ?? '🎙️'}
+              <span className="hidden sm:inline text-[10px]">{VOICES.find(v => v.id === selectedVoiceId)?.name ?? 'Voice'}</span>
+              <span className="text-[10px] text-zinc-600">▾</span>
+            </button>
+          )}
+          {/* Voice picker dropdown */}
+          {showVoicePicker && (
+            <div className="absolute right-0 top-8 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl w-64 max-h-72 overflow-y-auto">
+              <div className="px-3 py-2 border-b border-zinc-800 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Choose Obi&apos;s Voice</div>
+              {VOICES.map(voice => (
+                <button
+                  key={voice.id}
+                  onClick={() => {
+                    setSelectedVoiceId(voice.id);
+                    localStorage.setItem(VOICE_STORAGE_KEY, voice.id);
+                    setShowVoicePicker(false);
+                    stopTts(); // stop current audio when switching voice
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-zinc-800 transition-colors ${selectedVoiceId === voice.id ? 'bg-amber-500/10 border-l-2 border-amber-500' : ''}`}
+                >
+                  <span className="text-base">{voice.emoji}</span>
+                  <div>
+                    <div className={`text-xs font-semibold ${selectedVoiceId === voice.id ? 'text-amber-400' : 'text-zinc-200'}`}>{voice.name}</div>
+                    <div className="text-[10px] text-zinc-500">{voice.desc}</div>
+                  </div>
+                  {selectedVoiceId === voice.id && <span className="ml-auto text-amber-400 text-xs">✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={() => setSoundEnabled(v => !v)}
             title={soundEnabled ? 'Sound ON (click to mute)' : 'Sound OFF (click to enable)'}
