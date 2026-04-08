@@ -130,6 +130,10 @@ export default function GameSummary({
             san: m.san,
             classification: m.classification ?? 'unknown',
             bestMoveSan: m.bestMoveSan,
+            winPercentBefore: m.winPercentBefore,
+            winPercentAfter: m.winPercentAfter,
+            evalBefore: m.evalBefore,
+            evalAfter: m.evalAfter,
           })),
         }),
       });

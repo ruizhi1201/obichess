@@ -8,6 +8,10 @@ interface MoveSnapshot {
   san: string;
   classification: string;
   bestMoveSan?: string;
+  winPercentBefore?: number;
+  winPercentAfter?: number;
+  evalBefore?: number;
+  evalAfter?: number;
 }
 
 interface SkillStepInfo {
@@ -58,26 +62,56 @@ export async function POST(req: NextRequest) {
     const userAcc = userColor === 'w' ? whiteAcc : blackAcc;
     const userCounts = userColor === 'w' ? whiteCounts : blackCounts;
 
-    // Build a compact move list for key moments (inaccuracies, mistakes, blunders)
-    const userMoves: MoveSnapshot[] = (moves as MoveSnapshot[] || []).filter(
-      (m) => m.color === userColor && ['inaccuracy', 'mistake', 'blunder', 'best'].includes(m.classification)
-    );
+    const allMoves: MoveSnapshot[] = moves as MoveSnapshot[] || [];
 
-    // For advanced/elite players, include more detail; for beginner/intermediate, limit to top 3 mistakes
-    const isAdvanced = skillStep && skillStep.step >= 3; // Advanced (1400+) or Competitive/Elite (1800+)
-    const negatives = userMoves.filter(m => ['blunder', 'mistake', 'inaccuracy'].includes(m.classification));
-    const filteredNegatives = isAdvanced ? negatives : negatives.slice(0, 3); // beginner/intermediate: top 3 only
-    const positives = userMoves.filter(m => m.classification === 'best').slice(0, isAdvanced ? 4 : 2);
-    const keyMoves = [...positives, ...filteredNegatives].sort((a, b) => a.moveNumber - b.moveNumber);
+    // ─── Stockfish-based turning point detection ─────────────────────────────
+    // Find moves with the LARGEST win% swing — these are the real critical moments,
+    // NOT just move classifications. This ensures insights are grounded in engine data.
+    // Win% is from White's perspective (0–100); we convert to user perspective.
+    const movesWithEval = allMoves.filter(m => m.winPercentBefore !== undefined && m.winPercentAfter !== undefined);
+
+    // Compute swing magnitude for each move from user's perspective
+    const movesWithSwing = movesWithEval.map(m => {
+      const wpBefore = userColor === 'w' ? (m.winPercentBefore ?? 50) : (100 - (m.winPercentBefore ?? 50));
+      const wpAfter  = userColor === 'w' ? (m.winPercentAfter  ?? 50) : (100 - (m.winPercentAfter  ?? 50));
+      const swing = wpAfter - wpBefore; // positive = user gained, negative = user lost
+      return { ...m, swing, wpBefore, wpAfter };
+    });
+
+    // Top blunders/mistakes: biggest DROPS in user win% (regardless of move num, skip first 5 moves)
+    const isAdvanced = skillStep && (skillStep as { step: number }).step >= 3;
+    const userLosses = movesWithSwing
+      .filter(m => m.color === userColor && m.moveNumber > 5 && m.swing < -5)
+      .sort((a, b) => a.swing - b.swing) // most negative first
+      .slice(0, isAdvanced ? 4 : 3);
+
+    // Top best moments: biggest GAINS in user win% (skip first 5 moves)
+    const userGains = movesWithSwing
+      .filter(m => m.color === userColor && m.moveNumber > 5 && m.swing > 5)
+      .sort((a, b) => b.swing - a.swing) // most positive first
+      .slice(0, isAdvanced ? 3 : 2);
+
+    // Also note opponent's biggest blunders (opportunities user could exploit)
+    const oppBlunders = movesWithSwing
+      .filter(m => m.color !== userColor && m.moveNumber > 5 && m.swing < -8)
+      .sort((a, b) => a.swing - b.swing)
+      .slice(0, 2);
+
+    const keyMoves = [...userGains, ...userLosses, ...oppBlunders].sort((a, b) => a.moveNumber - b.moveNumber);
 
     const keyMovesText = keyMoves.length > 0
-      ? '\nKey moves:\n' + keyMoves.map(m => {
-          const turn = `Move ${m.moveNumber}${m.color === 'w' ? '' : '...'}`;
-          const played = m.san;
-          const better = m.bestMoveSan && m.bestMoveSan !== m.san ? ` (better: ${m.bestMoveSan})` : '';
-          return `- ${turn} ${played} [${m.classification}]${better}`;
+      ? '\nKey moments (identified by Stockfish win% changes — these are the REAL turning points):\n' +
+        keyMoves.map(m => {
+          const turn = `Move ${m.moveNumber}${m.color !== 'w' ? '...' : '.'}`;
+          const who = m.color === userColor ? 'You' : 'Opponent';
+          const wpB = m.wpBefore?.toFixed(0) ?? '?';
+          const wpA = m.wpAfter?.toFixed(0) ?? '?';
+          const swingStr = m.swing >= 0 ? `+${m.swing.toFixed(0)}%` : `${m.swing.toFixed(0)}%`;
+          const better = m.bestMoveSan && m.bestMoveSan !== m.san ? ` (engine best: ${m.bestMoveSan})` : '';
+          const label = m.swing < -15 ? '❌ blunder' : m.swing < -8 ? '⚠️ mistake' : m.swing > 15 ? '✅ excellent' : m.swing > 5 ? '👍 good' : '📉 opp blunder';
+          return `- ${turn} ${m.san} [${who}, win%: ${wpB}%→${wpA}% (${swingStr})] ${label}${better}`;
         }).join('\n')
-      : '';
+      : '\nNo major turning points detected (steady game).';
 
     // Build greeting/comparison context
     let sessionContext = '';
@@ -106,31 +140,28 @@ export async function POST(req: NextRequest) {
       ? 'Be concise and direct — skip obvious commentary. Prioritize concrete move sequences, tactical patterns, and strategic nuances. Each section should feel like advice from a strong club player or coach.'
       : 'Keep explanations clear, simple, and accessible. Focus on the single most impactful lesson from this game. Use plain language and avoid overwhelming the player with multiple points at once.';
 
-    const prompt = `${contextSections ? contextSections + '\n\n' : ''}Analyze this chess game performance for player "${userName}" playing as ${userColor === 'w' ? 'White' : 'Black'}:
+    const prompt = `${contextSections ? contextSections + '\n\n' : ''}Analyze this chess game for player "${userName}" playing as ${userColor === 'w' ? 'White' : 'Black'}.
 
-Accuracy: ${userAcc.toFixed(1)}%
-Total moves: ${totalMoves}
-Best moves: ${userCounts.best}
-Good moves: ${userCounts.good}
-Inaccuracies: ${userCounts.inaccuracy}
-Mistakes: ${userCounts.mistake}
-Blunders: ${userCounts.blunder}
+⚠️ CRITICAL RULE: Base ALL insights on the Stockfish win% data below. NEVER mention early opening moves (moves 1-5) as mistakes unless they caused a win% drop >10%. Opening theory is not your concern — only reference moves where Stockfish shows a meaningful win% change.
+
+Stockfish accuracy: ${userAcc.toFixed(1)}%
+Move breakdown — Best: ${userCounts.best} | Good: ${userCounts.good} | Inaccuracy: ${userCounts.inaccuracy} | Mistake: ${userCounts.mistake} | Blunder: ${userCounts.blunder}
 ${keyMovesText}
 
 ${depthInstruction}
 
-Provide a brief game analysis in exactly this format (use these exact headers, on their own lines):
+Provide a brief game analysis in exactly this format:
 
 ✅ What you did well:
-[2-3 specific positive observations. Reference specific move numbers from the key moves list to support your points, e.g. "Move 14 Bxg4 was particularly strong because..."]
+[2-3 points referencing specific moves from the key moments list above where win% IMPROVED. Cite move numbers and win% changes. e.g. "Move 14 Bxg2 gained you +18% winning chances"]
 
 📈 What to improve:
-[2-3 specific areas to work on. Reference specific move numbers from the key moves list where applicable, e.g. "Move 7 d5 was an inaccuracy — consider ... instead"]
+[2-3 points referencing specific moves from the key moments list where win% DROPPED. Cite move numbers and win% changes. e.g. "Move 25 Rxf3 cost you -22% — the engine preferred Qd6"]
 
 📚 Suggested study topics:
-[3-4 specific chess topics to study based on the patterns seen${trainingFocus ? `, especially as they relate to the player's training focus: "${trainingFocus}"` : ''}]
+[3-4 specific chess concepts based on the ACTUAL mistakes seen in this game${trainingFocus ? `, especially relating to: "${trainingFocus}"` : ''}]
 
-Keep each section to 2-3 sentences max. Be specific and cite move numbers where possible.`;
+Keep each section to 2-3 sentences. Always cite move numbers and win% when referencing key moments.`;
 
     const modelConfig = getModelConfig(subscriptionTier);
     const completion = await openai.chat.completions.create({

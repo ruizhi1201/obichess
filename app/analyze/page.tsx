@@ -147,13 +147,14 @@ function AnalyzingOverlay({ progress }: { progress: number }) {
 }
 
 // Vertical win bar alongside the board
-function VerticalWinBar({ moves, currentIndex, userColor }: {
+function VerticalWinBar({ moves, currentIndex, userColor, overrideEval }: {
   moves: AnalyzedMove[];
   currentIndex: number;
   userColor: 'w' | 'b';
+  overrideEval?: number | null; // used in explore mode
 }) {
   const move = currentIndex >= 0 ? moves[currentIndex] : null;
-  const evalScore = move?.evalAfter ?? 0;
+  const evalScore = overrideEval ?? move?.evalAfter ?? 0;
   const clampedEval = Math.max(-600, Math.min(600, evalScore));
   // whitePercent = how much white is winning (top = white side)
   const whitePercent = 50 + (clampedEval / 600) * 50;
@@ -212,6 +213,7 @@ export default function AnalyzePage() {
   const [exploreFen, setExploreFen] = useState<string | null>(null);
   const [exploreMoveEval, setExploreMoveEval] = useState<{ eval: number; bestMove: string } | null>(null);
   const [exploreLastMoveSan, setExploreLastMoveSan] = useState<string | null>(null);
+  const [exploreBranch, setExploreBranch] = useState<{ san: string; eval: number | null }[]>([]); // branch notation
   const [explanationCache, setExplanationCache] = useState<Map<string, string>>(new Map());
 
 
@@ -430,11 +432,13 @@ export default function AnalyzePage() {
       setExploreFen(null);
       setExploreMoveEval(null);
       setExploreLastMoveSan(null);
+      setExploreBranch([]);
     } else {
       setExploreMode(true);
       setExploreFen(null);
       setExploreMoveEval(null);
       setExploreLastMoveSan(null);
+      setExploreBranch([]);
     }
   }, [exploreMode]);
 
@@ -458,13 +462,16 @@ export default function AnalyzePage() {
       const newFen = chess.fen();
       setExploreFen(newFen);
       setExploreLastMoveSan(result.san);
+      let evalResult: number | null = null;
       try {
         const { analyzePosition } = await import('@/lib/stockfish');
         const analysis = await analyzePosition(newFen, 14);
         setExploreMoveEval({ eval: analysis.eval, bestMove: analysis.bestMove });
+        evalResult = analysis.eval;
       } catch {
         // ignore stockfish errors
       }
+      setExploreBranch(prev => [...prev, { san: result.san, eval: evalResult }]);
       return true;
     } catch {
       return false;
@@ -563,6 +570,7 @@ export default function AnalyzePage() {
                     moves={moves}
                     currentIndex={currentMoveIndex}
                     userColor={userColor}
+                    overrideEval={exploreMode && exploreMoveEval ? exploreMoveEval.eval : null}
                   />
                 </div>
 
@@ -579,23 +587,52 @@ export default function AnalyzePage() {
                 </div>
               </div>
 
-              {/* Explore mode banner */}
+              {/* Explore mode: banner + branch notation + eval */}
               {exploreMode && (
-                <div className="w-full max-w-[500px] bg-violet-900/40 border border-violet-700 rounded-lg px-3 py-2 flex items-center justify-between text-sm">
-                  <span className="text-violet-200">🔍 Explore mode — drag pieces to test ideas.</span>
-                  <button onClick={handleExploreToggle} className="text-violet-400 hover:text-violet-200 font-bold ml-2">✕</button>
-                </div>
-              )}
+                <div className="w-full max-w-[500px] flex flex-col gap-2">
+                  {/* Header bar */}
+                  <div className="bg-violet-900/40 border border-violet-700 rounded-lg px-3 py-2 flex items-center justify-between text-sm">
+                    <span className="text-violet-200">🔍 Explore mode — drag pieces to test ideas.</span>
+                    <button onClick={handleExploreToggle} className="text-violet-400 hover:text-violet-200 font-bold ml-2 text-xs border border-violet-600 rounded px-2 py-0.5">✕ Back</button>
+                  </div>
 
-              {/* Explore eval card */}
-              {exploreMode && exploreMoveEval && (
-                <div className="w-full max-w-[500px] bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono text-zinc-300">
-                  {exploreLastMoveSan && (
-                    <span className="text-violet-300 font-bold mr-2">{exploreLastMoveSan} →</span>
+                  {/* Branch notation — shows moves played in explore mode */}
+                  {exploreBranch.length > 0 && (
+                    <div className="bg-zinc-900 border border-violet-800/50 rounded-lg px-3 py-2">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] text-violet-400 font-semibold uppercase tracking-wider">Explore branch</span>
+                        <button
+                          onClick={() => { setExploreBranch([]); setExploreFen(null); setExploreMoveEval(null); setExploreLastMoveSan(null); }}
+                          className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
+                        >
+                          🗑 Clear branch
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {exploreBranch.map((m, i) => {
+                          const wp = m.eval !== null ? (50 + Math.max(-50, Math.min(50, m.eval / 12))) : null;
+                          const evalStr = m.eval !== null ? `${m.eval >= 0 ? '+' : ''}${(m.eval / 100).toFixed(1)}` : '';
+                          return (
+                            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 border border-violet-800/30 rounded px-1.5 py-0.5 text-xs">
+                              <span className="text-violet-300 font-mono font-bold">{m.san}</span>
+                              {evalStr && <span className="text-amber-400 text-[10px]">{evalStr}</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
-                  Stockfish: <span className="text-amber-400 font-bold">{exploreMoveEval.eval >= 0 ? '+' : ''}{(exploreMoveEval.eval / 100).toFixed(2)}</span>
-                  {exploreMoveEval.bestMove && (
-                    <span className="ml-2 text-zinc-400">| Best: <span className="text-green-400">{exploreMoveEval.bestMove}</span></span>
+
+                  {/* Stockfish eval for last explore move */}
+                  {exploreMoveEval && (
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono text-zinc-300 flex items-center gap-2">
+                      <span className="text-violet-300 font-bold">{exploreLastMoveSan}</span>
+                      <span className="text-zinc-500">→</span>
+                      <span>Stockfish: <span className="text-amber-400 font-bold">{exploreMoveEval.eval >= 0 ? '+' : ''}{(exploreMoveEval.eval / 100).toFixed(2)}</span></span>
+                      {exploreMoveEval.bestMove && (
+                        <span className="text-zinc-400 text-xs">Best: <span className="text-green-400">{exploreMoveEval.bestMove}</span></span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

@@ -28,6 +28,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
   const [micEnabled, setMicEnabled] = useState(true);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const [pendingAutoPlay, setPendingAutoPlay] = useState<string | null>(null);
+  const [isTtsPlaying, setIsTtsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -44,8 +45,19 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     }
   }, [messages, explanation, explanationLoading]);
 
+  const stopTts = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setIsTtsPlaying(false);
+  }, []);
+
   const playTts = useCallback(async (text: string, autoTriggered = false) => {
     if (!text) return;
+    // Stop any currently playing audio first
+    stopTts();
     setTtsLoading(true);
     setTtsStub(false);
     try {
@@ -58,16 +70,22 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
       if (contentType?.includes('audio')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
+        const playAudio = (audioUrl: string) => {
+          const audio = new Audio(audioUrl);
+          audioRef.current = audio;
+          setIsTtsPlaying(true);
+          audio.onended = () => setIsTtsPlaying(false);
+          audio.onerror = () => setIsTtsPlaying(false);
+          audio.play().catch(() => {
+            setIsTtsPlaying(false);
+            setPendingAutoPlay(audioUrl);
+          });
+        };
         if (autoTriggered && !userHasInteracted) {
           // Browser blocks autoplay without user gesture — queue it instead
           setPendingAutoPlay(url);
         } else {
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          audio.play().catch(() => {
-            // Still blocked — show pending prompt
-            setPendingAutoPlay(url);
-          });
+          playAudio(url);
         }
       } else {
         const data = await res.json();
@@ -78,7 +96,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     } finally {
       setTtsLoading(false);
     }
-  }, [userHasInteracted]);
+  }, [userHasInteracted, stopTts]);
 
   // Play pending audio when user first interacts
   const handleUserInteraction = useCallback(() => {
@@ -230,6 +248,10 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
       return;
     }
 
+    // Stop TTS immediately when user starts speaking — mic takes priority
+    stopTts();
+    setUserHasInteracted(true);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognition: any = new SpeechRecognitionCtor();
     recognition.continuous = false;
@@ -239,7 +261,30 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      setInput(transcript);
+      // Auto-submit the voice message immediately (don't just fill input)
+      const userMessage = { role: 'user' as const, content: transcript };
+      const newHistory = [...messages, userMessage];
+      setMessages(newHistory);
+      setInput('');
+      setChatLoading(true);
+      const skillPayload = playerProfile
+        ? (() => {
+            const s = getSkillStep(playerProfile.uscfEquivalent);
+            return { playerStep: s.step, playerUscfEquivalent: playerProfile.uscfEquivalent, playerLabel: s.label, focusAreas: s.focusAreas };
+          })()
+        : {};
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: transcript, fen: currentFen, history: messages, userColor, subscriptionTier, ...skillPayload }),
+      }).then(r => r.json()).then(data => {
+        const reply = data.reply || "Sorry, I couldn't process that.";
+        setMessages([...newHistory, { role: 'assistant', content: reply }]);
+        // Auto-play Obi's response via TTS
+        if (soundEnabled) playTts(reply, false);
+      }).catch(() => {
+        setMessages([...newHistory, { role: 'assistant', content: 'Connection error. Please try again.' }]);
+      }).finally(() => setChatLoading(false));
     };
 
     recognition.onend = () => {
@@ -264,9 +309,12 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
         <div
           className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center gap-2 cursor-pointer hover:bg-amber-500/20 transition-colors shrink-0"
           onClick={() => {
-            const audio = new Audio(pendingAutoPlay);
+            const audio = new Audio(pendingAutoPlay!);
             audioRef.current = audio;
-            audio.play().catch(() => {});
+            setIsTtsPlaying(true);
+            audio.onended = () => setIsTtsPlaying(false);
+            audio.onerror = () => setIsTtsPlaying(false);
+            audio.play().catch(() => setIsTtsPlaying(false));
             setPendingAutoPlay(null);
             setUserHasInteracted(true);
           }}
@@ -357,11 +405,11 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
                     <p>{explanation}</p>
                     <div className="flex items-center gap-3 mt-2 pt-2 border-t border-zinc-700/50">
                       <button
-                        onClick={handleListen}
+                        onClick={isTtsPlaying ? stopTts : handleListen}
                         disabled={ttsLoading}
-                        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50 flex items-center gap-1"
+                        className={`text-xs transition-colors disabled:opacity-50 flex items-center gap-1 ${isTtsPlaying ? 'text-amber-400 hover:text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                       >
-                        {ttsLoading ? '⏳ Loading...' : '🎙️ Listen'}
+                        {ttsLoading ? '⏳ Loading...' : isTtsPlaying ? '⏹ Stop' : '🎙️ Listen'}
                       </button>
                       <button
                         onClick={fetchExplanation}
