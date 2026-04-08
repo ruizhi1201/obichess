@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
 
     // Allowlist of valid voice IDs to prevent abuse
     const VALID_VOICE_IDS = new Set([
+      'Dnd9VXpAjEGXiRGBf1O6', // Parker Springfield
       'CwhRBWXzGAHq8TQ4Fs17', // Roger
       'EXAVITQu4vr4xnSDxMaL', // Sarah
       'FGY2WhTYpPnrIDTdsKH5', // Laura
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     // If ElevenLabs key is provided (not placeholder), use the real API
     if (apiKey && apiKey !== 'placeholder') {
-      const DEFAULT_VOICE = 'cjVigY5qzO86Huf0OWal'; // Eric — smooth, trustworthy, great for coaching
+      const DEFAULT_VOICE = 'Dnd9VXpAjEGXiRGBf1O6'; // Parker Springfield — TV Broadcaster
       const voiceId = (requestedVoiceId && VALID_VOICE_IDS.has(requestedVoiceId))
         ? requestedVoiceId
         : DEFAULT_VOICE;

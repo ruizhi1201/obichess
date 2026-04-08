@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 const VOICES = [
+  { id: 'Dnd9VXpAjEGXiRGBf1O6', name: 'Parker Springfield', desc: 'TV Broadcaster (American)', emoji: '📺' },
   { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', desc: 'Smooth, Trustworthy (American)', emoji: '🎙️' },
   { id: 'bIHbv24MWmeRgasZH58o', name: 'Will', desc: 'Relaxed Optimist (American)', emoji: '😊' },
   { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', desc: 'Deep, Resonant (American)', emoji: '🔊' },
@@ -19,7 +20,7 @@ const VOICES = [
   { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella', desc: 'Bright, Professional (American)', emoji: '🌸' },
   { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', desc: 'Velvety Actress (British)', emoji: '🎭' },
 ];
-const DEFAULT_VOICE_ID = 'cjVigY5qzO86Huf0OWal'; // Eric
+const DEFAULT_VOICE_ID = 'Dnd9VXpAjEGXiRGBf1O6'; // Parker Springfield
 const VOICE_STORAGE_KEY = 'obi_voice_preference';
 import { type AnalyzedMove, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
 import { type ChatMessage } from '@/app/api/chat/route';
