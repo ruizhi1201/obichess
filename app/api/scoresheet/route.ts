@@ -9,10 +9,10 @@ interface MoveEntry {
   blackConfidence: 'high' | 'medium' | 'low';
 }
 
-interface GeminiResponse {
-  candidates?: Array<{
-    content: {
-      parts: Array<{ text: string }>;
+interface OpenAIResponse {
+  choices?: Array<{
+    message: {
+      content: string;
     };
   }>;
 }
@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
     }
 
     // Convert file to base64
@@ -65,55 +65,55 @@ Rules:
 - Include ALL moves you can see on the scoresheet
 - Only return the JSON object, nothing else`;
 
-    // Call Gemini API
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-03-25:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64,
-                  },
+    // Call OpenAI API with vision
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${base64}`,
+                  detail: 'high',
                 },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: 'application/json',
+              },
+            ],
           },
-        }),
-      }
-    );
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      }),
+    });
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.error('Gemini API error:', errText);
+    if (!openaiRes.ok) {
+      const errText = await openaiRes.text();
+      console.error('OpenAI API error:', errText);
       return NextResponse.json(
-        { error: `Gemini API error: ${geminiRes.status}` },
+        { error: `OpenAI API error: ${openaiRes.status}` },
         { status: 502 }
       );
     }
 
-    const geminiData: GeminiResponse = await geminiRes.json();
-    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const openaiData: OpenAIResponse = await openaiRes.json();
+    const rawText = openaiData.choices?.[0]?.message?.content ?? '';
 
     let parsed: { moves: MoveEntry[]; white_player: string; black_player: string };
     try {
-      // Strip any markdown code fences if present
       const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsed = JSON.parse(cleaned);
     } catch {
-      console.error('Failed to parse Gemini JSON:', rawText);
+      console.error('Failed to parse OpenAI JSON:', rawText);
       return NextResponse.json(
-        { error: 'Failed to parse Gemini response', raw: rawText },
+        { error: 'Failed to parse OpenAI response', raw: rawText },
         { status: 500 }
       );
     }
@@ -150,16 +150,11 @@ Rules:
             blackValid = false;
           }
         }
-        // If white was invalid, we can't validate black in sequence
-        // but we mark it as needing verification anyway
       }
 
-      // If a move failed validation, undo back to before this move pair
       if (!whiteValid) {
-        // Don't push invalid move to chess history - reset to last good state
-        // We've already not moved, so chess state is still ok
+        // move not applied, state still ok
       } else if (whiteValid && !blackValid) {
-        // White succeeded but black failed - undo white
         chess.undo();
       }
 
@@ -169,9 +164,7 @@ Rules:
         blackValid,
       });
 
-      // If a move is invalid, stop validating further (game state is unknown)
       if (!whiteValid || (!blackValid && moveEntry.black && moveEntry.black !== '?')) {
-        // Mark all remaining moves as invalid since game state is unknown
         const remaining = parsed.moves.slice(validatedMoves.length);
         for (const rem of remaining) {
           validatedMoves.push({
