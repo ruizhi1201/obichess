@@ -33,7 +33,7 @@ interface ScoresheetResponse {
 interface VerificationTarget {
   moveNumber: number;
   side: 'white' | 'black';
-  currentValue: string;
+  currentValue: string | null;
   confidence: 'high' | 'medium' | 'low';
   isValid: boolean;
 }
@@ -220,7 +220,7 @@ export default function ScoresheetUploader({ onLoad }: ScoresheetUploaderProps) 
       if (finalQueue.length > 0) {
         setVerifyQueue(finalQueue);
         setCurrentVerifyIndex(0);
-        setVerifyInput(finalQueue[0].currentValue === '?' ? '' : finalQueue[0].currentValue);
+        setVerifyInput(!finalQueue[0].currentValue || finalQueue[0].currentValue === '?' ? '' : finalQueue[0].currentValue);
         setShowVerifyModal(true);
       }
     } catch (err) {
@@ -274,7 +274,7 @@ export default function ScoresheetUploader({ onLoad }: ScoresheetUploaderProps) 
     if (nextIndex < verifyQueue.length) {
       setCurrentVerifyIndex(nextIndex);
       const next = verifyQueue[nextIndex];
-      setVerifyInput(next.currentValue === '?' ? '' : next.currentValue);
+      setVerifyInput(!next.currentValue || next.currentValue === '?' ? '' : next.currentValue);
     } else {
       setShowVerifyModal(false);
     }
@@ -285,7 +285,7 @@ export default function ScoresheetUploader({ onLoad }: ScoresheetUploaderProps) 
     if (nextIndex < verifyQueue.length) {
       setCurrentVerifyIndex(nextIndex);
       const next = verifyQueue[nextIndex];
-      setVerifyInput(next.currentValue === '?' ? '' : next.currentValue);
+      setVerifyInput(!next.currentValue || next.currentValue === '?' ? '' : next.currentValue);
     } else {
       setShowVerifyModal(false);
     }
@@ -483,7 +483,7 @@ export default function ScoresheetUploader({ onLoad }: ScoresheetUploaderProps) 
               onClick={() => {
                 setCurrentVerifyIndex(0);
                 setVerifyInput(
-                  verifyQueue[0].currentValue === '?' ? '' : verifyQueue[0].currentValue
+                  !verifyQueue[0].currentValue || verifyQueue[0].currentValue === '?' ? '' : verifyQueue[0].currentValue
                 );
                 setShowVerifyModal(true);
               }}
