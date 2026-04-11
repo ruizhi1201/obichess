@@ -4,18 +4,29 @@ import { useState, useRef, useCallback } from 'react';
 
 interface ValidatedMove {
   number: number;
-  white: string;
-  black: string;
+  white: string | null;
+  black: string | null;
   whiteConfidence: 'high' | 'medium' | 'low';
   blackConfidence: 'high' | 'medium' | 'low';
   whiteValid: boolean;
   blackValid: boolean;
+  whiteNeeded: boolean;   // must be filled in by human
+  blackNeeded: boolean;   // must be filled in by human
+}
+
+interface GapEntry {
+  number: number;
+  color: 'white' | 'black';
 }
 
 interface ScoresheetResponse {
   moves: ValidatedMove[];
   white_player: string;
   black_player: string;
+  gaps: GapEntry[];        // moves that MUST be filled in
+  partialPGN: string;
+  boardStuck: boolean;
+  stuckAtMove: number;
   error?: string;
 }
 
@@ -43,6 +54,8 @@ function getMoveStatus(
 
 function needsVerification(move: ValidatedMove): boolean {
   return (
+    move.whiteNeeded ||
+    move.blackNeeded ||
     !move.whiteValid ||
     !move.blackValid ||
     move.whiteConfidence === 'low' ||
@@ -150,10 +163,64 @@ export default function ScoresheetUploader({ onLoad }: ScoresheetUploaderProps) 
         }
       }
 
-      if (queue.length > 0) {
-        setVerifyQueue(queue);
+      // Prioritize gaps (whiteNeeded/blackNeeded) first in the queue
+      const gaps = data.gaps || [];
+      const gapKeys = new Set(gaps.map((g: GapEntry) => `${g.number}-${g.color}`));
+      const gapQueue: VerificationTarget[] = [];
+      const warnQueue: VerificationTarget[] = [];
+
+      for (const m of data.moves) {
+        // Mandatory gaps first
+        if (m.whiteNeeded || gapKeys.has(`${m.number}-white`)) {
+          gapQueue.push({
+            moveNumber: m.number,
+            side: 'white',
+            currentValue: m.white ?? '?',
+            confidence: m.whiteConfidence,
+            isValid: m.whiteValid,
+          });
+        } else {
+          const ws = getMoveStatus(m.whiteConfidence, m.whiteValid);
+          if (ws !== 'good') {
+            warnQueue.push({
+              moveNumber: m.number,
+              side: 'white',
+              currentValue: m.white ?? '?',
+              confidence: m.whiteConfidence,
+              isValid: m.whiteValid,
+            });
+          }
+        }
+
+        if (m.blackNeeded || gapKeys.has(`${m.number}-black`)) {
+          gapQueue.push({
+            moveNumber: m.number,
+            side: 'black',
+            currentValue: m.black ?? '?',
+            confidence: m.blackConfidence,
+            isValid: m.blackValid,
+          });
+        } else if (m.black) {
+          const bs = getMoveStatus(m.blackConfidence, m.blackValid);
+          if (bs !== 'good') {
+            warnQueue.push({
+              moveNumber: m.number,
+              side: 'black',
+              currentValue: m.black ?? '?',
+              confidence: m.blackConfidence,
+              isValid: m.blackValid,
+            });
+          }
+        }
+      }
+
+      // Gaps must be resolved first, then warnings
+      const finalQueue = [...gapQueue, ...warnQueue];
+
+      if (finalQueue.length > 0) {
+        setVerifyQueue(finalQueue);
         setCurrentVerifyIndex(0);
-        setVerifyInput(queue[0].currentValue === '?' ? '' : queue[0].currentValue);
+        setVerifyInput(finalQueue[0].currentValue === '?' ? '' : finalQueue[0].currentValue);
         setShowVerifyModal(true);
       }
     } catch (err) {
@@ -454,25 +521,38 @@ export default function ScoresheetUploader({ onLoad }: ScoresheetUploaderProps) 
 
             {/* Question */}
             <div className="mb-5">
-              <p className="text-zinc-300 font-medium mb-1">
-                We had trouble reading move {currentVerify.moveNumber}.
-              </p>
-              <p className="text-zinc-400 text-sm">
-                What is{' '}
-                <span className="text-amber-400 font-semibold capitalize">
-                  {currentVerify.side}
-                </span>
-                &apos;s move?
-              </p>
-              {!currentVerify.isValid && currentVerify.currentValue !== '?' && (
-                <p className="text-red-400 text-xs mt-2">
-                  &ldquo;{currentVerify.currentValue}&rdquo; is not a legal move in this position.
-                </p>
-              )}
-              {currentVerify.confidence === 'low' && currentVerify.currentValue !== '?' && (
-                <p className="text-amber-400 text-xs mt-2">
-                  AI was unsure — best guess: &ldquo;{currentVerify.currentValue}&rdquo;
-                </p>
+              {currentVerify.currentValue === '?' || !currentVerify.isValid ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-0.5 rounded">REQUIRED</span>
+                    <span className="text-zinc-400 text-xs">Cannot proceed without this</span>
+                  </div>
+                  <p className="text-zinc-200 font-semibold mb-1">
+                    Move {currentVerify.moveNumber} — <span className="capitalize text-amber-400">{currentVerify.side}</span> is missing
+                  </p>
+                  <p className="text-zinc-400 text-sm">
+                    The AI could not read this cell. Please enter the move manually.
+                  </p>
+                  {!currentVerify.isValid && currentVerify.currentValue !== '?' && (
+                    <p className="text-red-400 text-xs mt-2">
+                      &ldquo;{currentVerify.currentValue}&rdquo; is not a legal move here.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-2 py-0.5 rounded">REVIEW</span>
+                    <span className="text-zinc-400 text-xs">Confirm or correct</span>
+                  </div>
+                  <p className="text-zinc-300 font-medium mb-1">
+                    Move {currentVerify.moveNumber} — <span className="capitalize text-amber-400">{currentVerify.side}</span>
+                  </p>
+                  <p className="text-zinc-400 text-sm">
+                    AI best guess: <span className="font-mono text-amber-300">{currentVerify.currentValue}</span>
+                    {currentVerify.confidence === 'medium' ? ' (medium confidence)' : ' (low confidence)'}
+                  </p>
+                </>
               )}
             </div>
 
