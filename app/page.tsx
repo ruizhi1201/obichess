@@ -20,6 +20,12 @@ export default function Home() {
             Dashboard
           </Link>
           <Link
+            href="/signup"
+            className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors"
+          >
+            Sign In
+          </Link>
+          <Link
             href="/analyze"
             className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
           >

@@ -476,18 +476,13 @@ export default function AnalyzePage() {
   const handleExploreMove = useCallback(async (from: string, to: string): Promise<boolean> => {
     const baseFen = exploreFen ?? currentFen;
     try {
-      // Check if piece on `from` belongs to the current turn; if not, swap turn in FEN
-      let fenToUse = baseFen;
-      const tempChess = new Chess(baseFen);
-      const piece = tempChess.get(from as Parameters<typeof tempChess.get>[0]);
-      if (piece && piece.color !== tempChess.turn()) {
-        // Swap turn in FEN: split by space, flip index 1
-        const parts = baseFen.split(' ');
-        parts[1] = parts[1] === 'w' ? 'b' : 'w';
-        fenToUse = parts.join(' ');
+      const chess = new Chess(baseFen);
+      // Reject if the piece being moved doesn't belong to the current turn
+      const piece = chess.get(from as Parameters<typeof chess.get>[0]);
+      if (!piece || piece.color !== chess.turn()) {
+        return false; // wrong color — illegal in chess
       }
 
-      const chess = new Chess(fenToUse);
       const result = chess.move({ from, to, promotion: 'q' });
       if (!result) return false;
       const newFen = chess.fen();
@@ -554,9 +549,16 @@ export default function AnalyzePage() {
             </span>
           </div>
         )}
-        <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
-          My Games
-        </Link>
+        <div className="flex items-center gap-4">
+          {!user && (
+            <Link href="/signup" className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors">
+              Sign In
+            </Link>
+          )}
+          <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
+            My Games
+          </Link>
+        </div>
       </nav>
 
       <div className="flex-1 flex overflow-hidden min-h-0">
