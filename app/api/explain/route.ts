@@ -20,6 +20,10 @@ export async function POST(req: NextRequest) {
       playerLabel,
       focusAreas,
       subscriptionTier,
+      materialBefore,
+      materialAfter,
+      capturedPiece,
+      inTactic,
     } = await req.json();
 
     if (!fenBefore || !moveSan) {
@@ -52,6 +56,26 @@ export async function POST(req: NextRequest) {
 
     if (isBlunder) {
       prompt += ` This was classified as a ${classification}.`;
+    }
+
+    // Material context
+    if (capturedPiece) {
+      const names: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen' };
+      const name = names[capturedPiece] || capturedPiece;
+      prompt += ` ${moverColorName} captured a ${name} on this move.`;
+    }
+    if (materialBefore !== undefined && materialAfter !== undefined) {
+      const matBefore = materialBefore;
+      const matAfter = materialAfter;
+      const deltaPawns = ((matAfter - matBefore) / 1).toFixed(1);
+      if (Math.abs(matAfter - matBefore) > 0.5) {
+        prompt += ` Material changed from ${matBefore > 0 ? '+' : ''}${matBefore.toFixed(1)} to ${matAfter > 0 ? '+' : ''}${matAfter.toFixed(1)} (${deltaPawns > '0' ? '+' : ''}${deltaPawns} pawns).`;
+      }
+    }
+
+    // Tactic context — critical for accurate analysis
+    if (inTactic) {
+      prompt += ` ⚠️ THIS MOVE IS PART OF A TACTIC SEQUENCE: ${inTactic}. Do NOT evaluate this move in isolation — it is part of a multi-move trade. The material exchange on this move is not yet a real advantage/loss until the tactic completes. Wait until the tactic finishes before declaring who gained.`;
     }
 
     prompt += `\n\nFEN before the move: ${fenBefore}`;

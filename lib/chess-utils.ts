@@ -10,13 +10,21 @@ export interface AnalyzedMove {
   moveNumber: number;
   color: 'w' | 'b';
   classification?: MoveClassification;
-  evalBefore?: number; // centipawns from white's perspective
+  evalBefore?: number;
   evalAfter?: number;
-  winPercentBefore?: number; // 0-100, white win probability before this move
-  winPercentAfter?: number;  // 0-100, white win probability after this move
-  mate?: number | null;      // if forced mate, e.g. 3 = white mates in 3, -3 = black mates in 3
-  bestMove?: string; // UCI notation
+  winPercentBefore?: number;
+  winPercentAfter?: number;
+  mate?: number | null;
+  bestMove?: string;
   bestMoveSan?: string;
+  /** Material advantage (in pawn-equivalents) before this move. Positive = white ahead. */
+  materialBefore?: number;
+  /** Material advantage after this move */
+  materialAfter?: number;
+  /** Piece captured on this move (p/n/b/r/q), null if no capture */
+  capturedPiece?: string | null;
+  /** If non-null, this move is inside a tactic sequence. Contains the tactic summary. */
+  inTactic?: string | null;
 }
 
 export interface ParsedGame {

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Chess } from 'chess.js';
 import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
+import { evaluateMaterial, materialDelta } from '@/lib/material';
+import { detectTactics, isInTactic } from '@/lib/tactics';
 import MoveNotation from '@/components/MoveNotation';
 import CoachPanel from '@/components/CoachPanel';
 import PGNUploader from '@/components/PGNUploader';
@@ -318,6 +320,12 @@ export default function AnalyzePage() {
           if (Math.abs(evalAfter) >= 900) {
             mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
           }
+
+          // Material analysis
+          const matBefore = evaluateMaterial(analyzedMoves[i].fenBefore);
+          const matAfter = evaluateMaterial(analyzedMoves[i].fenAfter);
+          const matDelta = materialDelta(analyzedMoves[i].fenBefore, analyzedMoves[i].fenAfter, analyzedMoves[i].color);
+
           analyzedMoves[i] = {
             ...analyzedMoves[i],
             evalBefore,
@@ -327,7 +335,30 @@ export default function AnalyzePage() {
             mate,
             bestMove: results[i].bestMove,
             classification: classifyMove(evalBefore, evalAfter, analyzedMoves[i].color),
+            materialBefore: matBefore.advantage,
+            materialAfter: matAfter.advantage,
+            capturedPiece: matDelta.capturedPiece,
           };
+        }
+
+        // Tactic detection
+        const tacticInput = analyzedMoves.map((m, idx) => ({
+          fenBefore: m.fenBefore,
+          fenAfter: m.fenAfter,
+          san: m.san,
+          color: m.color,
+          evalBefore: m.evalBefore!,
+          evalAfter: m.evalAfter!,
+          moveIndex: idx,
+        }));
+        const tactics = detectTactics(tacticInput);
+
+        // Annotate moves inside tactics
+        for (let i = 0; i < analyzedMoves.length; i++) {
+          const tactic = isInTactic(i, tactics);
+          if (tactic) {
+            analyzedMoves[i].inTactic = tactic.summary;
+          }
         }
       }
 
