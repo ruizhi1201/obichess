@@ -1,9 +1,8 @@
 /**
  * ObiChess AI Model Tiering
  * 
- * Free users  → GPT-4o Mini  (fast, cost-efficient)
- * Pro users   → GPT-4o       (full capability, premium analysis)
- * Family plan → GPT-4o       (same as Pro)
+ * All tiers use deepseek-v4-flash (DeepSeek V4 Flash) — fast, capable, cheap.
+ * Pricing is negligible (~$0.27/$1.10 per MTok).
  */
 
 export type SubscriptionTier = 'free' | 'pro' | 'family';
@@ -17,22 +16,22 @@ export interface ModelConfig {
 
 const MODEL_TIERS: Record<SubscriptionTier, ModelConfig> = {
   free: {
-    model: 'gpt-4o-mini',
-    maxTokens: 300,
+    model: 'deepseek-v4-flash',
+    maxTokens: 500,
     temperature: 0.5,
-    description: 'GPT-4o Mini — fast, cost-efficient for free users',
+    description: 'DeepSeek V4 Flash — fast, cost-efficient',
   },
   pro: {
-    model: 'gpt-4o',
-    maxTokens: 500,
+    model: 'deepseek-v4-flash',
+    maxTokens: 800,
     temperature: 0.4,
-    description: 'GPT-4o — full capability, premium analysis',
+    description: 'DeepSeek V4 Flash — full capability',
   },
   family: {
-    model: 'gpt-4o',
-    maxTokens: 500,
+    model: 'deepseek-v4-flash',
+    maxTokens: 800,
     temperature: 0.4,
-    description: 'GPT-4o — full capability, premium analysis',
+    description: 'DeepSeek V4 Flash — full capability',
   },
 };
 
