@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { COACH_SYSTEM_PROMPT } from './coach-prompt';
+export { COACH_SYSTEM_PROMPT };
 
 // Use DeepSeek V4 Pro API directly
 // Model: deepseek-v4-pro (powerful reasoning, 128K context)
