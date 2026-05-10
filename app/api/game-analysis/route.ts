@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { openai, COACH_SYSTEM_PROMPT } from '@/lib/openai';
-import { getModelConfig } from '@/lib/ai-models';
 
 interface MoveData {
   moveIndex: number;
@@ -84,37 +83,16 @@ export async function POST(req: NextRequest) {
     const focusCtx = trainingFocus ? `Training focus: ${trainingFocus}. Prioritize insights related to this.` : '';
 
     // ── Build prompt ──
-    const prompt = `Analyze this chess game for "${userName}" playing ${colorName}.
-
-${openingText}
+    const prompt = `Game: "${userName}" as ${colorName}. ${openingText}
 
 ${sigText}
 
 ${[skillCtx, focusCtx].filter(Boolean).join('\n')}
 
-Return a JSON object with exactly this structure (no markdown, no extra text):
-{
-  "gameSummary": {
-    "greeting": "1-sentence warm greeting to the player",
-    "wellDone": "2-3 things the player did well, citing specific move numbers and win% changes",
-    "improve": "2-3 things to improve, citing specific moves and what the engine preferred",
-    "topics": "3-4 specific chess concepts to study based on this game"
-  },
-  "moveNotes": {
-    "MOVE_INDEX": { "explanation": "1-2 sentence coaching insight", "opening": {"name": "Opening Name", "continuations": ["1. e4 e5 2. Nf3", "..."]} },
-    ...
-  }
-}
+Reply with ONLY a JSON object, no markdown:
+{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}
 
-RULES:
-- MOVE_INDEX is the 0-based index of the move (first move = 0, second = 1, etc.)
-- Only include moveNotes for moves with classification "blunder", "mistake", or "inaccuracy", OR moves where win% swing > 5%
-- For moves 0-4 (first 5 moves), ALWAYS include opening analysis with the "opening" field
-- For opening moves, identify the most likely opening name and list 3 most popular continuations
-- If the opening is not obvious from early moves, use "Unusual Opening" as the name
-- Keep explanations brief (1-3 sentences max)
-- For quiet/stable moves not in moveNotes, the frontend will auto-generate a note
-- Return ONLY valid JSON, no markdown fences or extra text`;
+Rules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inaccuracy moves OR swing>5%. First 5 moves ALWAYS include opening. Short explanations (1-2 sentences).`;
 
     // Use flash model for speed (must complete within Vercel 10s timeout)
     const completion = await openai.chat.completions.create({
@@ -125,7 +103,6 @@ RULES:
       ],
       max_tokens: 1200,
       temperature: 0.5,
-      response_format: { type: 'json_object' },
     });
 
     const raw = completion.choices[0].message.content || '{}';
