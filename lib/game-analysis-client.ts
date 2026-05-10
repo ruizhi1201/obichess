@@ -102,7 +102,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
         { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 2000,
+      max_tokens: 3000,
       temperature: 0.5,
     }),
   });
@@ -120,7 +120,21 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     parsed = JSON.parse(raw);
   } catch {
     const cleaned = raw.replace(/```(?:json)?\s*/g, '').replace(/```\s*$/g, '').trim();
-    parsed = JSON.parse(cleaned);
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // Try to salvage truncated JSON by finding the last valid key
+      const lastComma = cleaned.lastIndexOf(',"');
+      if (lastComma > 10) {
+        try {
+          parsed = JSON.parse(cleaned.substring(0, lastComma) + '}}');
+        } catch {
+          parsed = { gameSummary: null, moveNotes: {} };
+        }
+      } else {
+        parsed = { gameSummary: null, moveNotes: {} };
+      }
+    }
   }
 
   return {
