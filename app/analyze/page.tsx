@@ -379,6 +379,7 @@ export default function AnalyzePage() {
 
       (async () => {
         try {
+          console.log('[AI] Starting game analysis...');
           const result = await analyzeGame({
             moves: analyzedMoves.map((m, i) => ({
               moveIndex: i,
@@ -400,6 +401,7 @@ export default function AnalyzePage() {
             ...skillPayload,
           });
           
+          console.log('[AI] Result received. gameSummary:', !!result.gameSummary, 'moveNotes:', Object.keys(result.moveNotes||{}).length);
           if (result.gameSummary) {
             setGameInsights(result.gameSummary);
           }
