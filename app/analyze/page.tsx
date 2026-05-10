@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Chess } from 'chess.js';
 import { parsePGN, type ParsedGame, type AnalyzedMove, type MoveInsight, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
+import { analyzeGame } from '@/lib/game-analysis-client';
 import { evaluateMaterial, materialDelta } from '@/lib/material';
 import { detectTactics, isInTactic } from '@/lib/tactics';
 import MoveNotation from '@/components/MoveNotation';
@@ -378,40 +379,34 @@ export default function AnalyzePage() {
 
       (async () => {
         try {
-          const res = await fetch('/api/game-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              moves: analyzedMoves.map((m, i) => ({
-                moveIndex: i,
-                moveNumber: m.moveNumber,
-                color: m.color,
-                san: m.san,
-                uci: m.uci,
-                classification: m.classification ?? 'unknown',
-                bestMoveSan: m.bestMoveSan,
-                winPercentBefore: m.winPercentBefore,
-                winPercentAfter: m.winPercentAfter,
-                evalBefore: m.evalBefore,
-                evalAfter: m.evalAfter,
-              })),
-              userColor: color,
-              whiteName: parsed.headers['White'] || 'White',
-              blackName: parsed.headers['Black'] || 'Black',
-              trainingFocus,
-              ...skillPayload,
-            }),
+          const result = await analyzeGame({
+            moves: analyzedMoves.map((m, i) => ({
+              moveIndex: i,
+              moveNumber: m.moveNumber,
+              color: m.color,
+              san: m.san,
+              uci: m.uci,
+              classification: m.classification ?? 'unknown',
+              bestMoveSan: m.bestMoveSan,
+              winPercentBefore: m.winPercentBefore,
+              winPercentAfter: m.winPercentAfter,
+              evalBefore: m.evalBefore,
+              evalAfter: m.evalAfter,
+            })),
+            userColor: color,
+            whiteName: parsed.headers['White'] || 'White',
+            blackName: parsed.headers['Black'] || 'Black',
+            trainingFocus,
+            ...skillPayload,
           });
-          const data = await res.json();
           
-          if (data.gameSummary) {
-            setGameInsights(data.gameSummary);
+          if (result.gameSummary) {
+            setGameInsights(result.gameSummary);
           }
           
-          // Build insight cache from moveNotes
-          if (data.moveNotes) {
+          if (result.moveNotes) {
             const cache = new Map<string, MoveInsight>(explanationCache);
-            for (const [idxStr, note] of Object.entries(data.moveNotes)) {
+            for (const [idxStr, note] of Object.entries(result.moveNotes)) {
               const idx = parseInt(idxStr, 10);
               if (idx >= 0 && idx < analyzedMoves.length) {
                 const m = analyzedMoves[idx];
