@@ -94,65 +94,6 @@ export default function GameSummary({
     blunder: countClassification(moves, 'b', 'blunder'),
   };
 
-  const fetchInsights = async () => {
-    if (insightsLoading || insights) return;
-    setInsightsLoading(true);
-    setInsightsError(false);
-
-    const userAcc = userColor === 'w' ? whiteAcc : blackAcc;
-    const dailyAccuracies = getDailyAccuracies();
-    const isFirstToday = dailyAccuracies.length === 0;
-    // recentAccuracies = previous games today (not including this one)
-    const recentAccuracies = dailyAccuracies;
-
-    // Compute skill step from player profile for depth-tuning
-    const skillStep = playerProfile ? getSkillStep(playerProfile.uscfEquivalent) : null;
-
-    try {
-      const res = await fetch('/api/game-insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          whiteAcc,
-          blackAcc,
-          whiteCounts,
-          blackCounts,
-          userColor,
-          whiteName,
-          blackName,
-          totalMoves: moves.length,
-          isFirstToday,
-          recentAccuracies,
-          trainingFocus: trainingFocus || null,
-          subscriptionTier,
-          skillStep: skillStep ? { step: skillStep.step, label: skillStep.label, uscfEquivalent: playerProfile?.uscfEquivalent } : null,
-          moves: moves.map(m => ({
-            moveNumber: m.moveNumber,
-            color: m.color,
-            san: m.san,
-            classification: m.classification ?? 'unknown',
-            bestMoveSan: m.bestMoveSan,
-            winPercentBefore: m.winPercentBefore,
-            winPercentAfter: m.winPercentAfter,
-            evalBefore: m.evalBefore,
-            evalAfter: m.evalAfter,
-          })),
-        }),
-      });
-      const data = await res.json();
-      if (data.insights) {
-        setInsights(data.insights);
-        // Record this game's accuracy after successful fetch
-        recordDailyAccuracy(userAcc);
-      } else setInsightsError(true);
-    } catch (e) {
-      console.error('Failed to fetch insights:', e);
-      setInsightsError(true);
-    } finally {
-      setInsightsLoading(false);
-    }
-  };
-
   // Track daily game accuracies in localStorage
   function getDailyKey() {
     const d = new Date();
