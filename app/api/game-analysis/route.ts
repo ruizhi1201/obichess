@@ -58,22 +58,20 @@ export async function POST(req: NextRequest) {
         return { ...m, swing: wpAfter - wpBefore, wpBefore, wpAfter };
       });
 
-    // Build compact summary for AI: only include significant moves (swing > 3% OR blunder/mistake)
+    // Build compact summary for AI: only include significant moves, cap at 6
     const significantMoves = movesWithSwing
       .filter(m => Math.abs(m.swing) > 3 || ['blunder', 'mistake', 'inaccuracy'].includes(m.classification))
-      .slice(0, 12); // cap at 12 to keep prompt reasonable
+      .slice(0, 6);
 
     const sigText = significantMoves.length > 0
-      ? 'Significant moves (win% change >3% or classified blunder/mistake/inaccuracy):\n' +
+      ? 'Key moves:\n' +
         significantMoves.map(m => {
           const who = m.color === userColor ? 'You' : 'Opponent';
-          const wpB = m.wpBefore?.toFixed(0) ?? '?';
-          const wpA = m.wpAfter?.toFixed(0) ?? '?';
           const swingStr = `${m.swing >= 0 ? '+' : ''}${m.swing.toFixed(0)}%`;
           const better = m.bestMoveSan && m.bestMoveSan !== m.san ? ` (better: ${m.bestMoveSan})` : '';
-          return `Move ${m.moveNumber}${m.color !== 'w' ? '...' : '.'} ${m.san} [${who}, ${wpB}%→${wpA}% ${swingStr}, ${m.classification}]${better}`;
+          return `M${m.moveIndex}:${m.san} [${who} ${swingStr} ${m.classification}]${better}`;
         }).join('\n')
-      : 'No major turning points — steady game.';
+      : 'No major turning points.';
 
     // ── Opening moves (first 5) ──
     const firstFive = allMoves.slice(0, 5);
@@ -118,14 +116,14 @@ RULES:
 - For quiet/stable moves not in moveNotes, the frontend will auto-generate a note
 - Return ONLY valid JSON, no markdown fences or extra text`;
 
-    const modelConfig = getModelConfig(subscriptionTier);
+    // Use flash model for speed (must complete within Vercel 10s timeout)
     const completion = await openai.chat.completions.create({
-      model: modelConfig.model,
+      model: 'deepseek-v4-flash',
       messages: [
         { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 2000,
+      max_tokens: 1200,
       temperature: 0.5,
       response_format: { type: 'json_object' },
     });
