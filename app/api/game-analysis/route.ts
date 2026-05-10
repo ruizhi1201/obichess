@@ -122,7 +122,7 @@ Rules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inac
         parsed = JSON.parse(cleaned);
       } catch {
         console.error('Failed to parse AI response as JSON:', raw.substring(0, 200));
-        return NextResponse.json({ error: 'Invalid AI response format' }, { status: 500 });
+        return NextResponse.json({ error: 'Invalid AI response format', rawFirst200: raw.substring(0, 200) }, { status: 500 });
       }
     }
 
