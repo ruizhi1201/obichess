@@ -1,8 +1,7 @@
 import OpenAI from 'openai';
 
-// Use DeepSeek V4 Flash API directly
-// Free tier: 5M tokens, no rate limits
-// Model: deepseek-v4-flash (fast, good reasoning)
+// Use DeepSeek V4 Pro API directly
+// Model: deepseek-v4-pro (powerful reasoning, 128K context)
 export const openai = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: process.env.DEEPSEEK_BASEURL || 'https://api.deepseek.com',
@@ -10,7 +9,7 @@ export const openai = new OpenAI({
 
 // Model selection based on configuration
 export const getModel = () => {
-  return process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  return process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 };
 
 export const COACH_SYSTEM_PROMPT = `You are Obi, an expert chess coach with decades of experience training competitive youth players.

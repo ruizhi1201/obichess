@@ -16,22 +16,22 @@ export interface ModelConfig {
 
 const MODEL_TIERS: Record<SubscriptionTier, ModelConfig> = {
   free: {
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-v4-pro',
     maxTokens: 500,
     temperature: 0.5,
-    description: 'DeepSeek V4 Flash — fast, cost-efficient',
+    description: 'DeepSeek V4 Pro — powerful reasoning',
   },
   pro: {
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-v4-pro',
     maxTokens: 800,
     temperature: 0.4,
-    description: 'DeepSeek V4 Flash — full capability',
+    description: 'DeepSeek V4 Pro — full capability',
   },
   family: {
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-v4-pro',
     maxTokens: 800,
     temperature: 0.4,
-    description: 'DeepSeek V4 Flash — full capability',
+    description: 'DeepSeek V4 Pro — full capability',
   },
 };
 
