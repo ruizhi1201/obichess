@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Chess } from 'chess.js';
-import { parsePGN, type ParsedGame, type AnalyzedMove, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
+import { parsePGN, type ParsedGame, type AnalyzedMove, type MoveInsight, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
 import { evaluateMaterial, materialDelta } from '@/lib/material';
 import { detectTactics, isInTactic } from '@/lib/tactics';
 import MoveNotation from '@/components/MoveNotation';
@@ -216,7 +216,7 @@ export default function AnalyzePage() {
   const [exploreMoveEval, setExploreMoveEval] = useState<{ eval: number; bestMove: string } | null>(null);
   const [exploreLastMoveSan, setExploreLastMoveSan] = useState<string | null>(null);
   const [exploreBranch, setExploreBranch] = useState<{ san: string; eval: number | null }[]>([]); // branch notation
-  const [explanationCache, setExplanationCache] = useState<Map<string, string>>(new Map());
+  const [explanationCache, setExplanationCache] = useState<Map<string, MoveInsight>>(new Map());
 
 
   useEffect(() => {
@@ -366,7 +366,7 @@ export default function AnalyzePage() {
       setAnalysisComplete(true);
       setIsAnalyzing(false); // ← unblock UI immediately after Stockfish is done
 
-      // Pre-generate AI explanations in a true background task (non-blocking)
+      // Pre-generate AI insights for ALL moves in a true background task (non-blocking)
       // Priority: blunders > mistakes > inaccuracies > all others
       const PRIORITY = ['blunder', 'mistake', 'inaccuracy', 'good', 'best'];
       const sortedMoves = [...analyzedMoves].sort((a, b) => {
@@ -381,16 +381,19 @@ export default function AnalyzePage() {
           })()
         : {};
 
+      // First 5 moves for opening analysis
+      const firstFiveMoves = analyzedMoves.slice(0, 5).map(m => ({ san: m.san, color: m.color }));
+
       // Fire and forget — do NOT await this, so UI is immediately interactive
       (async () => {
-        const cache = new Map<string, string>();
-        const CONCURRENCY = 3;
+        const cache = new Map<string, MoveInsight>();
+        const CONCURRENCY = 2;
         for (let i = 0; i < sortedMoves.length; i += CONCURRENCY) {
           const batch = sortedMoves.slice(i, i + CONCURRENCY);
           await Promise.all(batch.map(async (m) => {
             if (!m.uci) return;
             try {
-              const res = await fetch('/api/explain', {
+              const res = await fetch('/api/move-insight', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -404,12 +407,19 @@ export default function AnalyzePage() {
                   classification: m.classification,
                   userColor: color,
                   moveColor: m.color,
+                  moveIndex: analyzedMoves.indexOf(m),
+                  firstFiveMoves,
                   ...skillPayload,
                 }),
               });
               const data = await res.json();
               if (data.explanation) {
-                cache.set(m.uci, data.explanation);
+                cache.set(m.uci, {
+                  explanation: data.explanation,
+                  winOddsChange: data.winOddsChange || '0.0%',
+                  alternatives: data.alternatives || [],
+                  opening: data.opening,
+                });
                 // Update cache incrementally so moves are available as they complete
                 setExplanationCache(new Map(cache));
               }
@@ -740,7 +750,7 @@ export default function AnalyzePage() {
                     currentFen={currentFen}
                     userColor={userColor}
                     playerProfile={playerProfile}
-                    explanationCache={explanationCache}
+                    insightCache={explanationCache}
                   />
                 )}
               </div>

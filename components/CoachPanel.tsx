@@ -22,7 +22,7 @@ const VOICES = [
 ];
 const DEFAULT_VOICE_ID = 'Dnd9VXpAjEGXiRGBf1O6'; // Parker Springfield
 const VOICE_STORAGE_KEY = 'obi_voice_preference';
-import { type AnalyzedMove, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
+import { type AnalyzedMove, type MoveInsight, classificationColor, classificationLabel, formatEval } from '@/lib/chess-utils';
 import { type ChatMessage } from '@/app/api/chat/route';
 import { type PlayerProfile, getSkillStep } from '@/lib/player-profiles';
 import { useSubscription } from '@/lib/use-subscription';
@@ -32,13 +32,14 @@ interface CoachPanelProps {
   currentFen: string;
   userColor: 'w' | 'b';
   playerProfile?: PlayerProfile | null;
-  explanationCache?: Map<string, string>; // uci -> explanation, pre-generated
+  insightCache?: Map<string, MoveInsight>; // uci → insight, pre-generated
 }
 
-export default function CoachPanel({ move, currentFen, userColor, playerProfile, explanationCache }: CoachPanelProps) {
+export default function CoachPanel({ move, currentFen, userColor, playerProfile, insightCache }: CoachPanelProps) {
   const { tier: subscriptionTier } = useSubscription();
   const [explanation, setExplanation] = useState<string>('');
   const [explanationLoading, setExplanationLoading] = useState(false);
+  const [insight, setInsight] = useState<MoveInsight | null>(null);
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsStub, setTtsStub] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -153,10 +154,11 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     }
   }, [userHasInteracted, pendingAutoPlay]);
 
-  // Fetch explanation when move changes — check cache first for instant load
+  // Fetch insight when move changes — check cache first for instant load
   useEffect(() => {
     if (!move) {
       setExplanation('');
+      setInsight(null);
       setLastMoveSan(null);
       return;
     }
@@ -165,23 +167,25 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     setMessages([]); // reset chat when move changes
 
     // Check cache first — instant load if available
-    const cached = move.uci ? explanationCache?.get(move.uci) : undefined;
+    const cached = move.uci ? insightCache?.get(move.uci) : undefined;
     if (cached) {
-      setExplanation(cached);
+      setInsight(cached);
+      setExplanation(cached.explanation);
       setExplanationLoading(false);
-      if (soundEnabled) playTts(cached, true);
+      if (soundEnabled) playTts(cached.explanation, true);
       return;
     }
 
     // Cache miss — fetch from API
-    fetchExplanation();
+    fetchInsight();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [move?.uci, move?.fenBefore, explanationCache]);
+  }, [move?.uci, move?.fenBefore, insightCache]);
 
-  const fetchExplanation = async () => {
+  const fetchInsight = async () => {
     if (!move) return;
     setExplanationLoading(true);
     setExplanation('');
+    setInsight(null);
     const skillPayload = playerProfile
       ? (() => {
           const s = getSkillStep(playerProfile.uscfEquivalent);
@@ -194,7 +198,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
         })()
       : {};
     try {
-      const res = await fetch('/api/explain', {
+      const res = await fetch('/api/move-insight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -208,6 +212,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
           classification: move.classification,
           userColor,
           moveColor: move.color,
+          moveIndex: move.moveNumber - 1,
           subscriptionTier,
           materialBefore: move.materialBefore,
           materialAfter: move.materialAfter,
@@ -218,8 +223,15 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
       });
       const data = await res.json();
       const expl = data.explanation || 'Could not generate explanation.';
+      const moveInsight: MoveInsight = {
+        explanation: expl,
+        winOddsChange: data.winOddsChange || '0.0%',
+        alternatives: data.alternatives || [],
+        opening: data.opening,
+      };
+      setInsight(moveInsight);
       setExplanation(expl);
-      // Auto-play TTS if sound is enabled (autoTriggered=true so browser policy is handled)
+      // Auto-play TTS if sound is enabled
       if (soundEnabled) {
         playTts(expl, true);
       }
@@ -466,6 +478,56 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
           </div>
         ) : (
           <>
+            {/* Win odds change + alternatives (always shown if available) */}
+            {insight && (
+              <div className="space-y-2">
+                {/* Win odds change chip */}
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-lg border border-zinc-800 text-xs">
+                  <span className="text-zinc-500">Win odds</span>
+                  <span className={`font-mono font-bold ${insight.winOddsChange.startsWith('+') ? 'text-emerald-400' : insight.winOddsChange.startsWith('-') ? 'text-red-400' : 'text-zinc-300'}`}>
+                    {insight.winOddsChange}
+                  </span>
+                  {move.evalAfter !== undefined && (
+                    <span className="text-zinc-500 font-mono">{formatEval(move.evalAfter)}</span>
+                  )}
+                </div>
+
+                {/* Alternative moves from engine */}
+                {insight.alternatives.length > 0 && (
+                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 px-3 py-2">
+                    <div className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1.5">Engine Alternatives</div>
+                    <div className="space-y-1">
+                      {insight.alternatives.map((alt, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <span className="text-zinc-400 w-4">{i + 1}.</span>
+                          <span className={`font-mono font-bold ${i === 0 ? 'text-emerald-400' : 'text-zinc-300'}`}>{alt.san}</span>
+                          <span className="text-zinc-600 font-mono text-[10px]">({alt.winOdds}%)</span>
+                          <span className={`ml-auto font-mono text-[10px] ${alt.delta === 'best' ? 'text-emerald-500' : alt.delta.startsWith('+') ? 'text-emerald-500/70' : 'text-red-400/70'}`}>
+                            {alt.delta === 'best' ? 'best' : alt.delta}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Opening analysis for early moves */}
+                {insight.opening && (
+                  <div className="bg-indigo-900/20 rounded-lg border border-indigo-800/30 px-3 py-2">
+                    <div className="text-[10px] text-indigo-400 uppercase tracking-wider mb-1">Opening</div>
+                    <div className="text-sm font-semibold text-indigo-200">{insight.opening.name}</div>
+                    {insight.opening.continuations && insight.opening.continuations.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {insight.opening.continuations.map((c, i) => (
+                          <div key={i} className="text-xs text-indigo-300/70 font-mono">{c}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Best move hint */}
             {move.bestMoveSan && move.classification !== 'best' && (
               <div className="text-xs text-zinc-500 bg-zinc-900 rounded-lg px-3 py-2 border border-zinc-800">
@@ -495,7 +557,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
                         {ttsLoading ? '⏳ Loading...' : isTtsPlaying ? '⏹ Stop' : '🎙️ Listen'}
                       </button>
                       <button
-                        onClick={fetchExplanation}
+                        onClick={fetchInsight}
                         className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
                       >
                         ↺ Refresh

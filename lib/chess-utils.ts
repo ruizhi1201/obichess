@@ -27,6 +27,23 @@ export interface AnalyzedMove {
   inTactic?: string | null;
 }
 
+/** Per-move AI insight — pre-generated for all moves on PGN load */
+export interface MoveInsight {
+  explanation: string;
+  winOddsChange: string;           // e.g. "+3.2%"
+  alternatives: MoveAlternative[]; // top engine alt moves
+  opening?: {                      // only for first 5 moves
+    name: string;
+    continuations: string[];
+  };
+}
+
+export interface MoveAlternative {
+  san: string;
+  winOdds: number;  // e.g. 52.1
+  delta: string;    // e.g. "+0.3%" or "best"
+}
+
 export interface ParsedGame {
   moves: AnalyzedMove[];
   headers: Record<string, string | null>;
