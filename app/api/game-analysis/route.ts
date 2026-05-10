@@ -94,8 +94,8 @@ Reply with ONLY a JSON object, no markdown:
 
 Rules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inaccuracy moves OR swing>5%. First 5 moves ALWAYS include opening. Short explanations (1-2 sentences).`;
 
-    // Use flash model for speed (must complete within Vercel 10s timeout)
-    const completion = await openai.chat.completions.create({
+    // Use streaming to avoid Vercel hobby plan 10s timeout
+    const stream = await openai.chat.completions.create({
       model: 'deepseek-v4-flash',
       messages: [
         { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
@@ -103,9 +103,13 @@ Rules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inac
       ],
       max_tokens: 1200,
       temperature: 0.5,
+      stream: true,
     });
 
-    const raw = completion.choices[0].message.content || '{}';
+    let raw = '';
+    for await (const chunk of stream) {
+      raw += chunk.choices[0]?.delta?.content || '';
+    }
 
     // Parse JSON, stripping any markdown fences if present
     let parsed: any;
