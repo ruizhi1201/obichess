@@ -113,6 +113,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
 
   const data = await response.json();
   const raw = data.choices?.[0]?.message?.content || '{}';
+  console.log('[AI] Raw response length:', raw.length, 'First 100:', raw.substring(0, 100));
 
   // Parse JSON, stripping markdown fences
   let parsed: any;
@@ -137,6 +138,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     }
   }
 
+  console.log('[AI] Parsed gameSummary:', !!parsed.gameSummary, 'moveNotes keys:', Object.keys(parsed.moveNotes||{}).length);
   return {
     gameSummary: parsed.gameSummary || null,
     moveNotes: parsed.moveNotes || {},
