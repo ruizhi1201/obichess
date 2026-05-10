@@ -107,7 +107,11 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     }),
   });
 
+  console.log('[AI] Fetch status:', response.status, 'ok:', response.ok);
+
   if (!response.ok) {
+    const errText = await response.text();
+    console.error('[AI] API error body:', errText.substring(0, 200));
     throw new Error(`DeepSeek API error: ${response.status}`);
   }
 
