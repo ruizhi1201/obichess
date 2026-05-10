@@ -101,7 +101,7 @@ Rules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inac
         { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 1200,
+      max_tokens: 2000,
       temperature: 0.5,
       stream: true,
     });
@@ -122,7 +122,7 @@ Rules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inac
         parsed = JSON.parse(cleaned);
       } catch {
         console.error('Failed to parse AI response as JSON:', raw.substring(0, 200));
-        return NextResponse.json({ error: 'Invalid AI response format', rawFirst200: raw.substring(0, 200) }, { status: 500 });
+        return NextResponse.json({ error: 'Invalid AI response format', rawLength: raw.length, raw: raw.substring(0, 500), rawLast50: raw.slice(-50) }, { status: 500 });
       }
     }
 
