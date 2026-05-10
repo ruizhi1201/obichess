@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
 
     // Clean explanation (remove OPENING section and continuations)
     let explanation = response
-      .replace(/OPENING:.*?(\n[-•].*)*/gis, '')
+      .replace(/OPENING:[\s\S]*?(?=\n\n|$)/i, '')
       .trim();
     if (!explanation || explanation.length < 5) {
       explanation = 'Position is stable.';
