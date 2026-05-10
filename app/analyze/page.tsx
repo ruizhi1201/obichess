@@ -217,6 +217,7 @@ export default function AnalyzePage() {
   const [exploreLastMoveSan, setExploreLastMoveSan] = useState<string | null>(null);
   const [exploreBranch, setExploreBranch] = useState<{ san: string; eval: number | null }[]>([]); // branch notation
   const [explanationCache, setExplanationCache] = useState<Map<string, MoveInsight>>(new Map());
+  const [gameInsights, setGameInsights] = useState<{ greeting: string; wellDone: string; improve: string; topics: string } | null>(null);
 
 
   useEffect(() => {
@@ -366,65 +367,89 @@ export default function AnalyzePage() {
       setAnalysisComplete(true);
       setIsAnalyzing(false); // ← unblock UI immediately after Stockfish is done
 
-      // Pre-generate AI insights for ALL moves in a true background task (non-blocking)
-      // Priority: blunders > mistakes > inaccuracies > all others
-      const PRIORITY = ['blunder', 'mistake', 'inaccuracy', 'good', 'best'];
-      const sortedMoves = [...analyzedMoves].sort((a, b) => {
-        return PRIORITY.indexOf(a.classification ?? 'best') - PRIORITY.indexOf(b.classification ?? 'best');
-      });
-
+      // ── Single AI call: generates BOTH game summary + per-move notes ──
       const { getSkillStep } = await import('@/lib/player-profiles');
       const skillPayload = playerProfile
         ? (() => {
             const s = getSkillStep(playerProfile.uscfEquivalent);
-            return { playerStep: s.step, playerUscfEquivalent: playerProfile.uscfEquivalent, playerLabel: s.label, focusAreas: s.focusAreas };
+            return { skillStep: { step: s.step, label: s.label, uscfEquivalent: playerProfile.uscfEquivalent }, focusAreas: s.focusAreas };
           })()
         : {};
 
-      // First 5 moves for opening analysis
-      const firstFiveMoves = analyzedMoves.slice(0, 5).map(m => ({ san: m.san, color: m.color }));
-
-      // Fire and forget — do NOT await this, so UI is immediately interactive
       (async () => {
-        const cache = new Map<string, MoveInsight>();
-        const CONCURRENCY = 2;
-        for (let i = 0; i < sortedMoves.length; i += CONCURRENCY) {
-          const batch = sortedMoves.slice(i, i + CONCURRENCY);
-          await Promise.all(batch.map(async (m) => {
-            if (!m.uci) return;
-            try {
-              const res = await fetch('/api/move-insight', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  fenBefore: m.fenBefore,
-                  fenAfter: m.fenAfter,
-                  moveSan: m.san,
-                  moveUci: m.uci,
-                  evalBefore: m.evalBefore,
-                  evalAfter: m.evalAfter,
-                  bestMoveSan: m.bestMoveSan,
-                  classification: m.classification,
-                  userColor: color,
-                  moveColor: m.color,
-                  moveIndex: analyzedMoves.indexOf(m),
-                  firstFiveMoves,
-                  ...skillPayload,
-                }),
-              });
-              const data = await res.json();
-              if (data.explanation) {
+        try {
+          const res = await fetch('/api/game-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              moves: analyzedMoves.map((m, i) => ({
+                moveIndex: i,
+                moveNumber: m.moveNumber,
+                color: m.color,
+                san: m.san,
+                uci: m.uci,
+                classification: m.classification ?? 'unknown',
+                bestMoveSan: m.bestMoveSan,
+                winPercentBefore: m.winPercentBefore,
+                winPercentAfter: m.winPercentAfter,
+                evalBefore: m.evalBefore,
+                evalAfter: m.evalAfter,
+              })),
+              userColor: color,
+              whiteName: parsed.headers['White'] || 'White',
+              blackName: parsed.headers['Black'] || 'Black',
+              trainingFocus,
+              ...skillPayload,
+            }),
+          });
+          const data = await res.json();
+          
+          if (data.gameSummary) {
+            setGameInsights(data.gameSummary);
+          }
+          
+          // Build insight cache from moveNotes
+          if (data.moveNotes) {
+            const cache = new Map<string, MoveInsight>(explanationCache);
+            for (const [idxStr, note] of Object.entries(data.moveNotes)) {
+              const idx = parseInt(idxStr, 10);
+              if (idx >= 0 && idx < analyzedMoves.length) {
+                const m = analyzedMoves[idx];
+                const n = note as any;
                 cache.set(m.uci, {
-                  explanation: data.explanation,
-                  winOddsChange: data.winOddsChange || '0.0%',
-                  alternatives: data.alternatives || [],
-                  opening: data.opening,
+                  explanation: n.explanation || '',
+                  winOddsChange: m.winPercentAfter !== undefined && m.winPercentBefore !== undefined
+                    ? `${((userColor === 'b' ? (100 - m.winPercentAfter) : m.winPercentAfter) - (userColor === 'b' ? (100 - m.winPercentBefore) : m.winPercentBefore)).toFixed(1)}%`
+                    : '0.0%',
+                  alternatives: [],
+                  opening: n.opening || undefined,
                 });
-                // Update cache incrementally so moves are available as they complete
-                setExplanationCache(new Map(cache));
               }
-            } catch { /* ignore individual failures */ }
-          }));
+            }
+            // Fill remaining moves with auto-generated explanations from eval data
+            for (let i = 0; i < analyzedMoves.length; i++) {
+              const m = analyzedMoves[i];
+              if (!cache.has(m.uci)) {
+                const wpBefore = userColor === 'b' ? (100 - (m.winPercentBefore ?? 50)) : (m.winPercentBefore ?? 50);
+                const wpAfter = userColor === 'b' ? (100 - (m.winPercentAfter ?? 50)) : (m.winPercentAfter ?? 50);
+                const delta = wpAfter - wpBefore;
+                let explanation = '';
+                if (m.classification === 'best') explanation = 'Solid move, maintains the position.';
+                else if (m.classification === 'good') explanation = 'Good developing move.';
+                else if (m.classification === 'inaccuracy') explanation = 'A slight inaccuracy.';
+                else if (m.classification === 'mistake' || m.classification === 'blunder') explanation = 'This cost some advantage.';
+                else explanation = 'Position is stable.';
+                cache.set(m.uci, {
+                  explanation,
+                  winOddsChange: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`,
+                  alternatives: [],
+                });
+              }
+            }
+            setExplanationCache(cache);
+          }
+        } catch (e) {
+          console.error('AI game analysis failed:', e);
         }
       })();
     } catch (e) {
@@ -743,6 +768,7 @@ export default function AnalyzePage() {
                     userColor={userColor}
                     playerProfile={playerProfile}
                     trainingFocus={trainingFocus}
+                    precomputedInsights={gameInsights}
                   />
                 ) : (
                   <CoachPanel

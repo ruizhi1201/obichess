@@ -15,6 +15,7 @@ interface GameSummaryProps {
   userColor?: 'w' | 'b';
   playerProfile?: PlayerProfile | null;
   trainingFocus?: string;
+  precomputedInsights?: { greeting: string; wellDone: string; improve: string; topics: string } | null;
 }
 
 function calcAccuracy(moves: AnalyzedMove[], color: 'w' | 'b'): number {
@@ -68,6 +69,7 @@ export default function GameSummary({
   userColor = 'w',
   playerProfile,
   trainingFocus,
+  precomputedInsights,
 }: GameSummaryProps) {
   const { tier: subscriptionTier } = useSubscription();
   const [insights, setInsights] = useState<string | null>(null);
@@ -167,14 +169,72 @@ export default function GameSummary({
     localStorage.setItem(key, JSON.stringify([...existing, acc]));
   }
 
-  // Auto-load insights when analysis is complete (moves have classifications)
+  // Use precomputed insights if available — no API call needed
   useEffect(() => {
-    const hasClassifications = moves.some(m => m.classification && m.classification !== 'unknown');
-    if (hasClassifications && !insights && !insightsLoading) {
-      fetchInsights();
+    if (precomputedInsights) {
+      const { greeting, wellDone, improve, topics } = precomputedInsights;
+      const text = [
+        greeting && greeting,
+        wellDone && `✅ What you did well:\n${wellDone}`,
+        improve && `📈 What to improve:\n${improve}`,
+        topics && `📚 Suggested study topics:\n${topics}`,
+      ].filter(Boolean).join('\n\n');
+      setInsights(text);
+      setInsightsLoading(false);
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moves]);
+    // Fallback: no precomputed insights, don't auto-call API — user can retry
+  }, [precomputedInsights]);
+
+  const fetchInsights = async () => {
+    if (insightsLoading || insights) return;
+    setInsightsLoading(true);
+    setInsightsError(false);
+
+    const userAcc = userColor === 'w' ? whiteAcc : blackAcc;
+    const dailyAccuracies = getDailyAccuracies();
+    const isFirstToday = dailyAccuracies.length === 0;
+    const recentAccuracies = dailyAccuracies;
+
+    const skillStep = playerProfile ? getSkillStep(playerProfile.uscfEquivalent) : null;
+
+    try {
+      const res = await fetch('/api/game-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          whiteAcc, blackAcc, whiteCounts, blackCounts,
+          userColor, whiteName, blackName,
+          totalMoves: moves.length,
+          isFirstToday, recentAccuracies,
+          trainingFocus: trainingFocus || null,
+          subscriptionTier,
+          skillStep: skillStep ? { step: skillStep.step, label: skillStep.label, uscfEquivalent: playerProfile?.uscfEquivalent } : null,
+          moves: moves.map(m => ({
+            moveNumber: m.moveNumber,
+            color: m.color,
+            san: m.san,
+            classification: m.classification ?? 'unknown',
+            bestMoveSan: m.bestMoveSan,
+            winPercentBefore: m.winPercentBefore,
+            winPercentAfter: m.winPercentAfter,
+            evalBefore: m.evalBefore,
+            evalAfter: m.evalAfter,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (data.insights) {
+        setInsights(data.insights);
+        recordDailyAccuracy(userAcc);
+      } else setInsightsError(true);
+    } catch (e) {
+      console.error('Failed to fetch insights:', e);
+      setInsightsError(true);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
 
   const parsedInsights = insights ? parseInsightSections(insights) : null;
 

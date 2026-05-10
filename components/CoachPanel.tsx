@@ -154,7 +154,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     }
   }, [userHasInteracted, pendingAutoPlay]);
 
-  // Fetch insight when move changes — check cache first for instant load
+  // Fetch insight when move changes — check cache ONLY, never call AI on miss
   useEffect(() => {
     if (!move) {
       setExplanation('');
@@ -164,7 +164,7 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     }
     if (move.san === lastMoveSan) return;
     setLastMoveSan(move.san);
-    setMessages([]); // reset chat when move changes
+    setMessages([]);
 
     // Check cache first — instant load if available
     const cached = move.uci ? insightCache?.get(move.uci) : undefined;
@@ -176,8 +176,19 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
       return;
     }
 
-    // Cache miss — fetch from API
-    fetchInsight();
+    // Cache miss — show eval-only data immediately (no AI call)
+    // The insight will fill in when background generation completes
+    setInsight(null);
+    setExplanationLoading(false);
+    const wpBefore = userColor === 'b' ? (100 - (move.winPercentBefore ?? 50)) : (move.winPercentBefore ?? 50);
+    const wpAfter = userColor === 'b' ? (100 - (move.winPercentAfter ?? 50)) : (move.winPercentAfter ?? 50);
+    const delta = wpAfter - wpBefore;
+    const fallbackExplanation = move.classification === 'best' ? 'Solid move, maintains the position.'
+      : move.classification === 'good' ? 'Good developing move.'
+      : move.classification === 'inaccuracy' ? 'A slight inaccuracy.'
+      : move.classification === 'mistake' || move.classification === 'blunder' ? 'This cost some advantage.'
+      : 'Position is stable.';
+    setExplanation(fallbackExplanation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [move?.uci, move?.fenBefore, insightCache]);
 
@@ -478,51 +489,36 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
           </div>
         ) : (
           <>
-            {/* Win odds change + alternatives (always shown if available) */}
-            {insight && (
-              <div className="space-y-2">
-                {/* Win odds change chip */}
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-lg border border-zinc-800 text-xs">
-                  <span className="text-zinc-500">Win odds</span>
-                  <span className={`font-mono font-bold ${insight.winOddsChange.startsWith('+') ? 'text-emerald-400' : insight.winOddsChange.startsWith('-') ? 'text-red-400' : 'text-zinc-300'}`}>
-                    {insight.winOddsChange}
-                  </span>
-                  {move.evalAfter !== undefined && (
-                    <span className="text-zinc-500 font-mono">{formatEval(move.evalAfter)}</span>
-                  )}
-                </div>
-
-                {/* Alternative moves from engine */}
-                {insight.alternatives.length > 0 && (
-                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 px-3 py-2">
-                    <div className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1.5">Engine Alternatives</div>
-                    <div className="space-y-1">
-                      {insight.alternatives.map((alt, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs">
-                          <span className="text-zinc-400 w-4">{i + 1}.</span>
-                          <span className={`font-mono font-bold ${i === 0 ? 'text-emerald-400' : 'text-zinc-300'}`}>{alt.san}</span>
-                          <span className="text-zinc-600 font-mono text-[10px]">({alt.winOdds}%)</span>
-                          <span className={`ml-auto font-mono text-[10px] ${alt.delta === 'best' ? 'text-emerald-500' : alt.delta.startsWith('+') ? 'text-emerald-500/70' : 'text-red-400/70'}`}>
-                            {alt.delta === 'best' ? 'best' : alt.delta}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+            {/* Win odds change — always shown from move eval data */}
+            {move && move.winPercentBefore !== undefined && move.winPercentAfter !== undefined && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-lg border border-zinc-800 text-xs">
+                <span className="text-zinc-500">Win odds</span>
+                <span className={`font-mono font-bold ${
+                  ((userColor === 'b' ? (100 - move.winPercentAfter) : move.winPercentAfter) -
+                   (userColor === 'b' ? (100 - move.winPercentBefore) : move.winPercentBefore)) > 0
+                    ? 'text-emerald-400' : 'text-red-400'
+                }`}>
+                  {((userColor === 'b' ? (100 - move.winPercentAfter) : move.winPercentAfter) -
+                    (userColor === 'b' ? (100 - move.winPercentBefore) : move.winPercentBefore) >= 0 ? '+' : '')}
+                  {((userColor === 'b' ? (100 - move.winPercentAfter) : move.winPercentAfter) -
+                    (userColor === 'b' ? (100 - move.winPercentBefore) : move.winPercentBefore)).toFixed(1)}%
+                </span>
+                {move.evalAfter !== undefined && (
+                  <span className="text-zinc-500 font-mono">{formatEval(move.evalAfter)}</span>
                 )}
+              </div>
+            )}
 
-                {/* Opening analysis for early moves */}
-                {insight.opening && (
-                  <div className="bg-indigo-900/20 rounded-lg border border-indigo-800/30 px-3 py-2">
-                    <div className="text-[10px] text-indigo-400 uppercase tracking-wider mb-1">Opening</div>
-                    <div className="text-sm font-semibold text-indigo-200">{insight.opening.name}</div>
-                    {insight.opening.continuations && insight.opening.continuations.length > 0 && (
-                      <div className="mt-1.5 space-y-0.5">
-                        {insight.opening.continuations.map((c, i) => (
-                          <div key={i} className="text-xs text-indigo-300/70 font-mono">{c}</div>
-                        ))}
-                      </div>
-                    )}
+            {/* Opening analysis for early moves (from cache) */}
+            {insight?.opening && (
+              <div className="bg-indigo-900/20 rounded-lg border border-indigo-800/30 px-3 py-2">
+                <div className="text-[10px] text-indigo-400 uppercase tracking-wider mb-1">Opening</div>
+                <div className="text-sm font-semibold text-indigo-200">{insight.opening.name}</div>
+                {insight.opening.continuations && insight.opening.continuations.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {insight.opening.continuations.map((c, i) => (
+                      <div key={i} className="text-xs text-indigo-300/70 font-mono">{c}</div>
+                    ))}
                   </div>
                 )}
               </div>
