@@ -1,5 +1,5 @@
 // Client-side AI analysis call — avoids Vercel serverless timeout
-import { COACH_SYSTEM_PROMPT } from './openai';
+import { COACH_SYSTEM_PROMPT } from './coach-prompt';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
