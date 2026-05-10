@@ -118,6 +118,11 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
   const data = await response.json();
   const raw = data.choices?.[0]?.message?.content || '{}';
   console.log('[AI] Raw response length:', raw.length, 'First 100:', raw.substring(0, 100));
+  console.log('[AI] Raw last 50:', raw.slice(-50));
+  // Also log if content field is missing
+  if (!data.choices?.[0]?.message?.content) {
+    console.log('[AI] Content field missing. Available fields:', JSON.stringify(Object.keys(data.choices?.[0]?.message || {})), 'Raw data sample:', JSON.stringify(data).substring(0, 200));
+  }
 
   // Parse JSON, stripping markdown fences
   let parsed: any;
