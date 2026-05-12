@@ -102,7 +102,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
         { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 3000,
+      max_tokens: 8000,
       temperature: 0.5,
     }),
   });
