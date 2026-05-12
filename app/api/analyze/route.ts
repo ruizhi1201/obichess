@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use local Stockfish-18 via CLI — no API key, full control
-// Stockfish-18-asm.js runs on Node.js (no WASM, faster)
-// Depth: 18 ply default (can increase for more accuracy)
-// Returns: best move (UCI), eval in centipawns, mate in N, depth
-// No check of winning margin per move — Stockfish evaluates each position globally
+// Lichess Cloud Eval API — free, no API key, real Stockfish analysis at depth 30-75
+// Falls back to material evaluation for positions not yet in Lichess cache
 
-// Material values in centipawns
 const PIECE_VALUES: Record<string, number> = {
   p: 100, n: 320, b: 330, r: 500, q: 900, k: 0
 };
@@ -24,58 +20,54 @@ function materialEval(fen: string): number {
   return score;
 }
 
-// Call Stockfish CLI via Node.js execSync
-async function analyzeWithStockfish(fen: string, depth: number = 18): Promise<{
-  bestMove: string;
-  eval: number;
-  mate: number | null;
-  depth: number;
-}> {
+async function getLichessEval(fen: string, multiPv: number = 1) {
   try {
-    const execSync = require('child_process').execSync;
-    const path = '/home/whoami/.openclaw/workspace/obichess/node_modules/stockfish/bin/stockfish-18.js';
-    
-    const args = ['ucinewgame'];
-    const fullFen = 'position fen ' + fen + ' fense';
-    args.push(fullFen);
-    args.push('ucinewgame');
-    args.push('ucinewgame'); // bestmove output
-    
-    const response = execSync(path, { 
-      args, 
-      cwd: '/home/whoami/.openclaw/workspace/obichess', 
-      encoding: 'utf8', 
-      stdio: 'pipe' 
+    const encodedFen = encodeURIComponent(fen);
+    const url = `https://lichess.org/api/cloud-eval?fen=${encodedFen}&multiPv=${multiPv}`;
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(5000),
     });
-
-    const result = JSON.parse(response.stdout);
-    const evalStr = result.info?.score.split(' ')[1];
-    const matEval = evalStr ? parseInt(evalStr) : 0;
-    
-    return {
-      bestMove: result.info?.pgn.split(' ').pop()?.trim() || '',
-      eval: matEval,
-      mate: matEval >= 5000 ? 1 : null, // Mate threshold
-      depth: depth,
-    };
+    if (!response.ok) return null;
+    return await response.json();
   } catch (error) {
-    console.error('[Stockfish CLI] Error:', error);
-    const matEval = materialEval(fen);
-    return { bestMove: '', eval: matEval, mate: null, depth: 0 };
+    console.error('[Lichess Eval] Fetch error:', error);
+    return null;
   }
 }
 
-// Single-position analysis (existing route handler)
 export async function POST(req: NextRequest) {
-  const { fen } = await req.json();
+  const { fen, multiPv } = await req.json();
 
   if (!fen) {
     return NextResponse.json({ error: 'FEN required' }, { status: 400 });
   }
 
   try {
-    const result = await analyzeWithStockfish(fen, 18);
-    return NextResponse.json(result);
+    const data = await getLichessEval(fen, multiPv || 1);
+
+    if (data?.pvs?.[0]) {
+      const pv = data.pvs[0];
+      const cp = pv.cp ?? (pv.mate != null
+        ? (pv.mate > 0 ? 30000 : -30000)
+        : 0);
+
+      return NextResponse.json({
+        bestMove: pv.moves?.split(' ')[0] || '',
+        eval: cp,
+        depth: data.depth || 30,
+        mate: pv.mate ?? null,
+      });
+    }
+
+    // Position not in Lichess cache — fall back to material evaluation
+    const matEval = materialEval(fen);
+    return NextResponse.json({
+      bestMove: '',
+      eval: matEval,
+      depth: 0,
+      mate: null,
+    });
   } catch (error) {
     console.error('[Analyze API] Error:', error);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
