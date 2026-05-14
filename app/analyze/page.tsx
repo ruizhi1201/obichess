@@ -164,27 +164,26 @@ function VerticalWinBar({ moves, currentIndex, userColor, overrideEval }: {
   const whitePercent = 50 + (clampedEval / 600) * 50;
 
   // If user is black, flip so their color is at bottom
-  const topColor = userColor === 'w' ? '#fff' : '#1a1a1a';
-  const bottomColor = userColor === 'w' ? '#1a1a1a' : '#fff';
-  const topLabel = userColor === 'w' ? '♔' : '♚';
-  const bottomLabel = userColor === 'w' ? '♚' : '♔';
-
-  // The "winning" bar fills from the user's side
-  const userWinPercent = userColor === 'w' ? whitePercent : (100 - whitePercent);
 
   return (
     <div className="flex flex-col items-center gap-1 h-full py-1 select-none">
-      <span className="text-xs text-zinc-500">{topLabel}</span>
+      <span className="text-xs text-zinc-500">{userColor === 'w' ? '♚' : '♔'}</span>
       <div className="flex-1 w-4 bg-zinc-700 rounded-full overflow-hidden flex flex-col relative">
-        {/* White section always at top */}
-        <div
-          className="w-full bg-white transition-all duration-500"
-          style={{ height: `${whitePercent}%` }}
-        />
-        {/* Black fills the rest */}
-        <div className="w-full bg-zinc-900 flex-1" />
+        {/* When user=white: black section at top, white fills from bottom */}
+        {/* When user=black: white section at top, black fills from bottom */}
+        {userColor === 'w' ? (
+          <>
+            <div className="w-full bg-zinc-900" style={{ height: `${100 - whitePercent}%` }} />
+            <div className="w-full bg-white transition-all duration-500 flex-1" />
+          </>
+        ) : (
+          <>
+            <div className="w-full bg-white transition-all duration-500" style={{ height: `${whitePercent}%` }} />
+            <div className="w-full bg-zinc-900 flex-1" />
+          </>
+        )}
       </div>
-      <span className="text-xs text-zinc-500">{bottomLabel}</span>
+      <span className="text-xs text-zinc-500">{userColor === 'w' ? '♔' : '♚'}</span>
     </div>
   );
 }
@@ -301,7 +300,7 @@ export default function AnalyzePage() {
 
       for (let i = 0; i < analyzedMoves.length; i++) {
         try {
-          const result = await analyzePosition(analyzedMoves[i].fenBefore, 16);
+          const result = await analyzePosition(analyzedMoves[i].fenBefore, 22);
           results.push(result);
           setAnalysisProgress(Math.round(((i + 1) / (analyzedMoves.length + 1)) * 100));
         } catch {
@@ -311,7 +310,7 @@ export default function AnalyzePage() {
 
       let lastEval = 0;
       try {
-        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 16);
+        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 22);
         lastEval = lastResult.eval;
       } catch {}
 
@@ -383,6 +382,45 @@ export default function AnalyzePage() {
       setMoves(analyzedMoves);
       setAnalysisComplete(true);
       setIsAnalyzing(false); // ← unblock UI immediately after Stockfish is done
+
+      // ── Opening Explorer: fetch top 3 variations for first 10 half-moves ──
+      (async () => {
+        const { fetchOpeningExplorer } = await import('@/lib/opening-explorer');
+        const enriched = [...analyzedMoves];
+        let updates = 0;
+        for (let i = 0; i < Math.min(10, enriched.length); i++) {
+          try {
+            const result = await fetchOpeningExplorer(enriched[i].fenBefore);
+            if (result && result.total > 0) {
+              enriched[i] = { ...enriched[i], openingExplorer: result };
+              updates++;
+            }
+          } catch { /* skip on error */ }
+        }
+        if (updates > 0) {
+          setMoves(enriched);
+          // Also update explanation cache with opening data
+          const cacheWithOpenings = new Map<string, MoveInsight>(explanationCache);
+          for (let i = 0; i < enriched.length; i++) {
+            const m = enriched[i];
+            if (m.openingExplorer && m.openingExplorer.topMoves.length > 0) {
+              const existing = cacheWithOpenings.get(m.uci);
+              if (existing && !existing.opening) {
+                cacheWithOpenings.set(m.uci, {
+                  ...existing,
+                  opening: {
+                    name: `Position stats: ${m.openingExplorer.total.toLocaleString()} games`,
+                    continuations: m.openingExplorer.topMoves.map(
+                      mv => `${mv.san} (W:${mv.whiteRate.toFixed(0)}% B:${mv.blackRate.toFixed(0)}% D:${mv.drawRate.toFixed(0)}%)`
+                    ),
+                  },
+                });
+              }
+            }
+          }
+          setExplanationCache(cacheWithOpenings);
+        }
+      })();
 
       // ── Single AI call: generates BOTH game summary + per-move notes ──
       const { getSkillStep } = await import('@/lib/player-profiles');

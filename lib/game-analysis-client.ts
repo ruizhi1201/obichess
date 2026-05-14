@@ -65,12 +65,25 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     });
 
   const significantMoves = movesWithSwing
-    .filter(m => Math.abs(m.swing) > 3 || ['blunder', 'mistake', 'inaccuracy'].includes(m.classification) || m.isTrap || (m.tacticalPatterns && m.tacticalPatterns.length > 0))
-    .slice(0, 8);
+    .filter(m => Math.abs(m.swing) > 2 || ['blunder', 'mistake', 'inaccuracy'].includes(m.classification) || m.isTrap || (m.tacticalPatterns && m.tacticalPatterns.length > 0))
+    .slice(0, 12);
 
-  const sigText = significantMoves.length > 0
+  // Also include the first 8 moves for opening coverage
+  const openingKeyMoves = movesWithSwing.slice(0, 8);
+  const seenIndices = new Set<number>();
+  const allKeyMoves: typeof movesWithSwing = [];
+  for (const m of [...openingKeyMoves, ...significantMoves]) {
+    if (!seenIndices.has(m.moveIndex)) {
+      seenIndices.add(m.moveIndex);
+      allKeyMoves.push(m);
+    }
+  }
+  allKeyMoves.sort((a, b) => a.moveIndex - b.moveIndex);
+  allKeyMoves.splice(15);
+
+  const sigText = allKeyMoves.length > 0
     ? 'Key moves:\n' +
-      significantMoves.map(m => {
+      allKeyMoves.map(m => {
         const who = m.color === userColor ? 'You' : 'Opponent';
         const swingStr = `${m.swing >= 0 ? '+' : ''}${m.swing.toFixed(0)}%`;
         const better = m.bestMoveSan && m.bestMoveSan !== m.san ? ` (better: ${m.bestMoveSan})` : '';
@@ -103,7 +116,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
       }).join('\n')
     : '';
 
-  const prompt = `Game: "${userName}" as ${colorName}. ${openingText}\n\n${sigText}\n\n${tacticalText ? tacticalText + '\n\n' : ''}${[skillCtx, focusCtx].filter(Boolean).join('\n')}\n\nReply with ONLY a JSON object, no markdown:\n{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}\n\nRules: moveNotes keys are moveIndex (0-based). Include all blunders/mistakes/inaccuracies, trap moves, tactical patterns, and moves with >5% swing. First 5 moves ALWAYS include opening. If a trap move, explain WHY it's subtle. Short explanations (1-2 sentences).`;
+  const prompt = `Game: "${userName}" as ${colorName}. ${openingText}\n\n${sigText}\n\n${tacticalText ? tacticalText + '\n\n' : ''}${[skillCtx, focusCtx].filter(Boolean).join('\n')}\n\nReply with ONLY a JSON object, no markdown:\n{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}\n\nRULES:\n- moveNotes keys are moveIndex (0-based).\n- Include ALL moves listed in Key moves above, plus any trap moves.\n- First 8 moves ALWAYS include opening context.\n- For tactical moments (fork/pin/discovered/skewer/hanging), explain the tactic.\n- For trap moves, explain WHY the move seemed quiet but created hidden threats.\n- For best/good moves, note the plan (development, space, control).\n- Short explanations (1-3 sentences each).\n- If you don't have insight for a move, still include it with a brief note.`;
 
   const apiKey = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -122,7 +135,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
         { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 8000,
+      max_tokens: 12000,
       temperature: 0.5,
     }),
   });
@@ -139,7 +152,6 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
   const raw = data.choices?.[0]?.message?.content || '{}';
   console.log('[AI] Raw response length:', raw.length, 'First 100:', raw.substring(0, 100));
   console.log('[AI] Raw last 50:', raw.slice(-50));
-  // Also log if content field is missing
   if (!data.choices?.[0]?.message?.content) {
     console.log('[AI] Content field missing. Available fields:', JSON.stringify(Object.keys(data.choices?.[0]?.message || {})), 'Raw data sample:', JSON.stringify(data).substring(0, 200));
   }
@@ -153,7 +165,6 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // Try to salvage truncated JSON by finding the last valid key
       const lastComma = cleaned.lastIndexOf(',"');
       if (lastComma > 10) {
         try {

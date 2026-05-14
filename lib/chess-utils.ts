@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import type { TacticalPattern } from './tactics';
+import type { OpeningExplorerResult } from './opening-explorer';
 
 export type MoveClassification = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder' | 'unknown';
 
@@ -32,6 +33,8 @@ export interface AnalyzedMove {
   isTrap?: boolean;
   /** Trap description if isTrap is true */
   trapDescription?: string;
+  /** Opening explorer data (top 3 variations + win rates) — populated for first 10 half-moves */
+  openingExplorer?: OpeningExplorerResult;
 }
 
 /** Per-move AI insight — pre-generated for all moves on PGN load */
