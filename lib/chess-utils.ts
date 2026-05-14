@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js';
+import type { TacticalPattern } from './tactics';
 
 export type MoveClassification = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder' | 'unknown';
 
@@ -25,6 +26,12 @@ export interface AnalyzedMove {
   capturedPiece?: string | null;
   /** If non-null, this move is inside a tactic sequence. Contains the tactic summary. */
   inTactic?: string | null;
+  /** Tactical patterns detected after this move (fork, pin, etc.) */
+  tacticalPatterns?: TacticalPattern[];
+  /** Whether this move is a subtle trap */
+  isTrap?: boolean;
+  /** Trap description if isTrap is true */
+  trapDescription?: string;
 }
 
 /** Per-move AI insight — pre-generated for all moves on PGN load */

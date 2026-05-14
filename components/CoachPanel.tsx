@@ -180,14 +180,21 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
     // The insight will fill in when background generation completes
     setInsight(null);
     setExplanationLoading(false);
-    const wpBefore = userColor === 'b' ? (100 - (move.winPercentBefore ?? 50)) : (move.winPercentBefore ?? 50);
-    const wpAfter = userColor === 'b' ? (100 - (move.winPercentAfter ?? 50)) : (move.winPercentAfter ?? 50);
-    const delta = wpAfter - wpBefore;
-    const fallbackExplanation = move.classification === 'best' ? 'Solid move, maintains the position.'
-      : move.classification === 'good' ? 'Good developing move.'
-      : move.classification === 'inaccuracy' ? 'A slight inaccuracy.'
-      : move.classification === 'mistake' || move.classification === 'blunder' ? 'This cost some advantage.'
-      : 'Position is stable.';
+    const fallbackExplanation = 
+      move.trapDescription ? move.trapDescription :
+      move.tacticalPatterns && move.tacticalPatterns.length > 0 ? (
+        move.tacticalPatterns[0] === 'fork' ? 'A fork! Your piece attacks two opponent pieces.' :
+        move.tacticalPatterns[0] === 'pin' ? 'A pin restricts the opponent\'s mobility.' :
+        move.tacticalPatterns[0] === 'discovered' ? 'A discovered attack unleashes hidden pressure.' :
+        move.tacticalPatterns[0] === 'skewer' ? 'A skewer forces the opponent to lose material.' :
+        move.tacticalPatterns[0] === 'hanging' ? 'An opponent piece is undefended — free capture!' :
+        'Tactical opportunity present.'
+      ) :
+      move.classification === 'best' ? 'Solid move, maintains the position.' :
+      move.classification === 'good' ? 'Good developing move.' :
+      move.classification === 'inaccuracy' ? 'A slight inaccuracy.' :
+      move.classification === 'mistake' || move.classification === 'blunder' ? 'This cost some advantage.' :
+      'Position is stable.';
     setExplanation(fallbackExplanation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [move?.uci, move?.fenBefore, insightCache]);
@@ -415,6 +422,16 @@ export default function CoachPanel({ move, currentFen, userColor, playerProfile,
                 }}
               >
                 {classificationLabel(move.classification)}
+              </span>
+            )}
+            {move.isTrap && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                ⚠️ Trap
+              </span>
+            )}
+            {!move.isTrap && move.tacticalPatterns && move.tacticalPatterns.length > 0 && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-400 border border-violet-500/30">
+                ⚡ {move.tacticalPatterns[0]}
               </span>
             )}
             <span className="font-mono text-base font-bold text-zinc-100 truncate">{move.san}</span>

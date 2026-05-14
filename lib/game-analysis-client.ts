@@ -16,6 +16,9 @@ interface GameAnalysisInput {
     winPercentAfter?: number;
     evalBefore?: number;
     evalAfter?: number;
+    tacticalPatterns?: string[];
+    isTrap?: boolean;
+    trapDescription?: string;
   }>;
   userColor: 'w' | 'b';
   whiteName: string;
@@ -62,8 +65,8 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     });
 
   const significantMoves = movesWithSwing
-    .filter(m => Math.abs(m.swing) > 3 || ['blunder', 'mistake', 'inaccuracy'].includes(m.classification))
-    .slice(0, 6);
+    .filter(m => Math.abs(m.swing) > 3 || ['blunder', 'mistake', 'inaccuracy'].includes(m.classification) || m.isTrap || (m.tacticalPatterns && m.tacticalPatterns.length > 0))
+    .slice(0, 8);
 
   const sigText = significantMoves.length > 0
     ? 'Key moves:\n' +
@@ -71,9 +74,16 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
         const who = m.color === userColor ? 'You' : 'Opponent';
         const swingStr = `${m.swing >= 0 ? '+' : ''}${m.swing.toFixed(0)}%`;
         const better = m.bestMoveSan && m.bestMoveSan !== m.san ? ` (better: ${m.bestMoveSan})` : '';
-        return `M${m.moveIndex}:${m.san} [${who} ${swingStr} ${m.classification}]${better}`;
+        const trapTag = m.isTrap ? ' ⚠️TRAP' : '';
+        const patternTag = m.tacticalPatterns && !m.isTrap ? ` [${m.tacticalPatterns.join(',')}]` : '';
+        return `M${m.moveIndex}:${m.san} [${who} ${swingStr} ${m.classification}]${better}${trapTag}${patternTag}`;
       }).join('\n')
     : 'No major turning points.';
+
+  // Tactical moments
+  const tacticalMoves = movesWithSwing
+    .filter(m => m.isTrap || (m.tacticalPatterns && m.tacticalPatterns.length > 0))
+    .slice(0, 4);
 
   const firstFive = moves.slice(0, 5);
   const openingText = firstFive.length > 0
@@ -83,7 +93,17 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
   const skillCtx = buildSkillContext(skillStep);
   const focusCtx = trainingFocus ? `Training focus: ${trainingFocus}.` : '';
 
-  const prompt = `Game: "${userName}" as ${colorName}. ${openingText}\n\n${sigText}\n\n${[skillCtx, focusCtx].filter(Boolean).join('\n')}\n\nReply with ONLY a JSON object, no markdown:\n{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}\n\nRules: moveNotes keys are moveIndex (0-based). Only include blunder/mistake/inaccuracy moves OR swing>5%. First 5 moves ALWAYS include opening. Short explanations (1-2 sentences).`;
+  const tacticalText = tacticalMoves.length > 0
+    ? 'Tactical moments:\n' +
+      tacticalMoves.map(m => {
+        const who = m.color === userColor ? 'You' : 'Opponent';
+        const patterns = m.tacticalPatterns?.join(', ') || '';
+        const trapNote = m.isTrap && m.trapDescription ? ` ⚠️ ${m.trapDescription}` : '';
+        return `M${m.moveIndex}:${m.san} [${who}] ${patterns}${trapNote}`;
+      }).join('\n')
+    : '';
+
+  const prompt = `Game: "${userName}" as ${colorName}. ${openingText}\n\n${sigText}\n\n${tacticalText ? tacticalText + '\n\n' : ''}${[skillCtx, focusCtx].filter(Boolean).join('\n')}\n\nReply with ONLY a JSON object, no markdown:\n{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}\n\nRules: moveNotes keys are moveIndex (0-based). Include all blunders/mistakes/inaccuracies, trap moves, tactical patterns, and moves with >5% swing. First 5 moves ALWAYS include opening. If a trap move, explain WHY it's subtle. Short explanations (1-2 sentences).`;
 
   const apiKey = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY;
   if (!apiKey) {

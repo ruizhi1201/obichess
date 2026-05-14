@@ -7,7 +7,8 @@ import { Chess } from 'chess.js';
 import { parsePGN, type ParsedGame, type AnalyzedMove, type MoveInsight, classifyMove, cpToWinPercent } from '@/lib/chess-utils';
 import { analyzeGame } from '@/lib/game-analysis-client';
 import { evaluateMaterial, materialDelta } from '@/lib/material';
-import { detectTactics, isInTactic } from '@/lib/tactics';
+import { detectTactics, isInTactic, detectPatterns } from '@/lib/tactics';
+import { detectTrap } from '@/lib/trap-engine';
 import MoveNotation from '@/components/MoveNotation';
 import CoachPanel from '@/components/CoachPanel';
 import PGNUploader from '@/components/PGNUploader';
@@ -362,6 +363,21 @@ export default function AnalyzePage() {
             analyzedMoves[i].inTactic = tactic.summary;
           }
         }
+
+        // ── Pattern detection: board-level tactical patterns ──
+        for (let i = 0; i < analyzedMoves.length; i++) {
+          const m = analyzedMoves[i];
+          const patterns = detectPatterns(m.fenBefore, m.fenAfter, m.color, m.uci);
+          if (patterns.length > 0) {
+            analyzedMoves[i].tacticalPatterns = patterns.map(p => p.pattern);
+            // Check for subtle traps (good move + patterns + small eval swing)
+            const trap = detectTrap(m, patterns);
+            if (trap) {
+              analyzedMoves[i].isTrap = true;
+              analyzedMoves[i].trapDescription = trap.description;
+            }
+          }
+        }
       }
 
       setMoves(analyzedMoves);
@@ -393,6 +409,9 @@ export default function AnalyzePage() {
               winPercentAfter: m.winPercentAfter,
               evalBefore: m.evalBefore,
               evalAfter: m.evalAfter,
+              tacticalPatterns: m.tacticalPatterns,
+              isTrap: m.isTrap,
+              trapDescription: m.trapDescription,
             })),
             userColor: color,
             whiteName: parsed.headers['White'] || 'White',
@@ -431,7 +450,17 @@ export default function AnalyzePage() {
                 const wpAfter = userColor === 'b' ? (100 - (m.winPercentAfter ?? 50)) : (m.winPercentAfter ?? 50);
                 const delta = wpAfter - wpBefore;
                 let explanation = '';
-                if (m.classification === 'best') explanation = 'Solid move, maintains the position.';
+                if (m.trapDescription) {
+                  explanation = m.trapDescription;
+                } else if (m.tacticalPatterns && m.tacticalPatterns.length > 0) {
+                  const p = m.tacticalPatterns[0];
+                  if (p === 'fork') explanation = 'A fork! Your piece attacks two opponent pieces.';
+                  else if (p === 'pin') explanation = 'A pin restricts the opponent\'s mobility.';
+                  else if (p === 'discovered') explanation = 'A discovered attack unleashes hidden pressure.';
+                  else if (p === 'skewer') explanation = 'A skewer forces the opponent to lose material.';
+                  else if (p === 'hanging') explanation = 'An opponent piece is undefended — free capture!';
+                  else explanation = 'Tactical opportunity present.';
+                } else if (m.classification === 'best') explanation = 'Solid move, maintains the position.';
                 else if (m.classification === 'good') explanation = 'Good developing move.';
                 else if (m.classification === 'inaccuracy') explanation = 'A slight inaccuracy.';
                 else if (m.classification === 'mistake' || m.classification === 'blunder') explanation = 'This cost some advantage.';
