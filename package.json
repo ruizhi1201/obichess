@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "mkdir -p public/stockfish && cp node_modules/stockfish/bin/stockfish-18-lite-single.js node_modules/stockfish/bin/stockfish-18-lite-single.wasm public/stockfish/",
+    "prebuild": "mkdir -p public/stockfish && cp node_modules/stockfish/bin/stockfish-18-lite-single.js node_modules/stockfish/bin/stockfish-18-lite-single.wasm public/stockfish/"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

@@ -33,5 +33,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 *.wasm
-public/stockfish/*.wasm
+public/stockfish/
 .env.production
