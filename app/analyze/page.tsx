@@ -224,6 +224,7 @@ export default function AnalyzePage() {
   const [gameInsights, setGameInsights] = useState<{ greeting: string; wellDone: string; improve: string; topics: string } | null>(null);
   const [showPuzzleModal, setShowPuzzleModal] = useState(false);
   const [puzzleCandidates, setPuzzleCandidates] = useState<PuzzleCandidate[]>([]);
+  const [puzzleReady, setPuzzleReady] = useState(false);
 
 
   useEffect(() => {
@@ -533,10 +534,8 @@ export default function AnalyzePage() {
             );
             if (eligible.length > 0) {
               setPuzzleCandidates(eligible);
-              // Auto-show after a short delay so UI settles
-              setTimeout(() => setShowPuzzleModal(true), 1500);
+              setPuzzleReady(true);
             }
-            // else: all candidates out of ELO range → don't show
           }
         } catch (e) {
           console.error('AI game analysis failed:', e);
@@ -551,7 +550,11 @@ export default function AnalyzePage() {
   const handleMoveSelect = useCallback((index: number) => {
     setCurrentMoveIndex(index);
     setSelectedMove(moves[index] || null);
-  }, [moves]);
+    // Auto-trigger puzzle modal when user reaches the last move
+    if (index === moves.length - 1 && puzzleReady && puzzleCandidates.length > 0) {
+      setShowPuzzleModal(true);
+    }
+  }, [moves, puzzleReady, puzzleCandidates]);
 
   const goToStart = () => { setCurrentMoveIndex(-1); setSelectedMove(null); };
   const goToPrev = () => {
@@ -817,6 +820,16 @@ export default function AnalyzePage() {
                     </span>
                     <button onClick={goToNext} className="chess-nav-btn" title="Next">▶</button>
                     <button onClick={goToEnd} className="chess-nav-btn" title="End">⏭</button>
+                    {puzzleReady && puzzleCandidates.length > 0 && (
+                      <button
+                        onClick={() => setShowPuzzleModal(true)}
+                        className="chess-nav-btn px-3 text-sm bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30 animate-pulse"
+                        title="Share your best move!"
+                        style={{ width: 'auto' }}
+                      >
+                        🧩 Puzzle
+                      </button>
+                    )}
                   </>
                 )}
                 <button

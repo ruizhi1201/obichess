@@ -22,7 +22,12 @@ interface EvalChartProps {
 interface ChartDataPoint {
   index: number;
   label: string;
+  /** White's win percentage (0–100). 50 = equal, >50 = White better, <50 = Black better */
   winPercent: number;
+  /** Data clipped to show only White advantage (>50 → value, ≤50 → 50) */
+  whiteArea: number;
+  /** Data clipped to show only Black advantage (<50 → value, ≥50 → 50) */
+  blackArea: number;
   cp: number;
   mate: number | null;
   classification?: string;
@@ -40,7 +45,6 @@ function classificationDotColor(classification?: string): string {
   }
 }
 
-// Custom tooltip
 const CustomTooltip = ({
   active,
   payload,
@@ -80,9 +84,13 @@ const CustomTooltip = ({
 export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName, blackName }: EvalChartProps) {
   if (!moves.length) return null;
 
-  // Build chart data — one point per move, using winPercentAfter
+  // Build chart data — each point is winPercentAfter from White's perspective
+  // We split into two series: whiteArea (values ≥ 50) and blackArea (values ≤ 50)
+  // This creates the two-tone Lichess-style chart
   const data: ChartDataPoint[] = moves.map((m, i) => {
     const winPercent = m.winPercentAfter ?? 50;
+    const whiteArea = winPercent >= 50 ? winPercent : 50;
+    const blackArea = winPercent <= 50 ? winPercent : 50;
     const cp = m.evalAfter ?? 0;
     const moveNum = Math.floor(i / 2) + 1;
     const label = m.color === 'w' ? `${moveNum}.` : `${moveNum}...`;
@@ -90,6 +98,8 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
       index: i,
       label,
       winPercent,
+      whiteArea,
+      blackArea,
       cp,
       mate: m.mate ?? null,
       classification: m.classification,
@@ -119,9 +129,15 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
           style={{ cursor: 'pointer' }}
         >
           <defs>
-            <linearGradient id="lichessWhite" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.9} />
-              <stop offset="100%" stopColor="#ffffff" stopOpacity={0.6} />
+            {/* White advantage gradient (above 50%) */}
+            <linearGradient id="whiteAdv" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.95} />
+              <stop offset="100%" stopColor="#d4d4d4" stopOpacity={0.3} />
+            </linearGradient>
+            {/* Black advantage gradient (below 50%) */}
+            <linearGradient id="blackAdv" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor="#1a1a1a" stopOpacity={0.95} />
+              <stop offset="100%" stopColor="#52525b" stopOpacity={0.4} />
             </linearGradient>
           </defs>
 
@@ -133,49 +149,48 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
           />
           <ReferenceLine y={50} stroke="#555" strokeWidth={1} />
 
-          {/* Main area - white fill above 50%, dark background below */}
+          {/* White advantage area (above 50% line) */}
           <Area
             type="monotone"
-            dataKey="winPercent"
-            stroke="#888888"
+            dataKey="whiteArea"
+            stroke="#bbbbbb"
             strokeWidth={1}
-            fill="url(#lichessWhite)"
+            fill="url(#whiteAdv)"
             baseValue={50}
             isAnimationActive={false}
-            dot={(props) => {
-              const { cx, cy, index } = props as { cx: number; cy: number; index: number };
-              if (index === currentIndex) {
-                return (
-                  <circle
-                    key={`dot-${index}`}
-                    cx={cx}
-                    cy={cy}
-                    r={5}
-                    fill="#fbbf24"
-                    stroke="#000"
-                    strokeWidth={1}
-                  />
-                );
-              }
-              return <g key={`dot-${index}`} />;
-            }}
+            dot={false}
           />
-          {/* Current move cursor */}
-          <ReferenceLine
-            x={currentIndex}
-            stroke="#fbbf24"
-            strokeWidth={2}
-            strokeDasharray="3 3"
+
+          {/* Black advantage area (below 50% line) */}
+          <Area
+            type="monotone"
+            dataKey="blackArea"
+            stroke="#666666"
+            strokeWidth={1}
+            fill="url(#blackAdv)"
+            baseValue={50}
+            isAnimationActive={false}
+            dot={false}
           />
+
+          {/* Current position indicator */}
+          {data[currentIndex] && (
+            <ReferenceLine
+              x={currentIndex}
+              stroke="#fbbf24"
+              strokeWidth={2}
+              strokeDasharray="3 3"
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
 
       {/* Legend */}
       <div className="flex items-center gap-3 px-2 pb-1 text-[9px] text-zinc-500">
-        <span><span style={{color:'#22c55e'}}>●</span> Best</span>
-        <span><span style={{color:'#fbbf24'}}>●</span> Inaccuracy</span>
-        <span><span style={{color:'#f97316'}}>●</span> Mistake</span>
-        <span><span style={{color:'#ef4444'}}>●</span> Blunder</span>
+        <span><span style={{ color: '#22c55e' }}>●</span> Best</span>
+        <span><span style={{ color: '#fbbf24' }}>●</span> Inaccuracy</span>
+        <span><span style={{ color: '#f97316' }}>●</span> Mistake</span>
+        <span><span style={{ color: '#ef4444' }}>●</span> Blunder</span>
       </div>
     </div>
   );
