@@ -18,6 +18,9 @@ import PlayerProfileModal from '@/components/PlayerProfileModal';
 import { supabase, isUserPro } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { type PlayerProfile } from '@/lib/player-profiles';
+import { extractPuzzleCandidates, filterByElo, shouldFallbackToBestMoment, getBestMoment, displayDifficulty } from '@/lib/puzzle-utils';
+import type { PuzzleCandidate } from '@/lib/puzzle-utils';
+import PuzzleShareModal from '@/components/PuzzleShareModal';
 
 const ChessBoard = dynamic(() => import('@/components/ChessBoard'), { ssr: false });
 
@@ -219,6 +222,8 @@ export default function AnalyzePage() {
   const [exploreBranch, setExploreBranch] = useState<{ san: string; eval: number | null }[]>([]); // branch notation
   const [explanationCache, setExplanationCache] = useState<Map<string, MoveInsight>>(new Map());
   const [gameInsights, setGameInsights] = useState<{ greeting: string; wellDone: string; improve: string; topics: string } | null>(null);
+  const [showPuzzleModal, setShowPuzzleModal] = useState(false);
+  const [puzzleCandidates, setPuzzleCandidates] = useState<PuzzleCandidate[]>([]);
 
 
   useEffect(() => {
@@ -511,6 +516,27 @@ export default function AnalyzePage() {
               }
             }
             setExplanationCache(cache);
+          }
+
+          // ── Extract puzzle candidates after AI is done ──
+          const candidates = extractPuzzleCandidates(
+            analyzedMoves,
+            color === 'w' ? (parsed.headers['White'] || 'Player') : (parsed.headers['Black'] || 'Player'),
+            playerProfile?.uscfEquivalent || 1500,
+            color === 'w' ? (parsed.headers['Black'] || 'Opponent') : (parsed.headers['White'] || 'Opponent'),
+          );
+
+          if (candidates.length > 0) {
+            const eligible = filterByElo(
+              candidates,
+              playerProfile?.uscfEquivalent || 1500,
+            );
+            if (eligible.length > 0) {
+              setPuzzleCandidates(eligible);
+              // Auto-show after a short delay so UI settles
+              setTimeout(() => setShowPuzzleModal(true), 1500);
+            }
+            // else: all candidates out of ELO range → don't show
           }
         } catch (e) {
           console.error('AI game analysis failed:', e);
@@ -869,6 +895,51 @@ export default function AnalyzePage() {
           color: #f4f4f5;
         }
       `}</style>
+
+      {/* Puzzle Share Modal */}
+      {showPuzzleModal && puzzleCandidates.length > 0 && (
+        <PuzzleShareModal
+          puzzles={puzzleCandidates}
+          onShare={async (index) => {
+            const puzzle = puzzleCandidates[index];
+            if (!puzzle) return;
+            try {
+              const res = await fetch('/api/puzzles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fen: puzzle.fen,
+                  solution: puzzle.solution,
+                  playerName: puzzle.playerName,
+                  playerElo: puzzle.playerElo,
+                  difficulty: puzzle.difficulty,
+                  difficultyScore: puzzle.difficultyScore,
+                  opponentName: puzzle.opponentName,
+                  explanation: gameInsights?.wellDone || `${puzzle.playerName} found ${puzzle.san} — a ${puzzle.isTactical ? 'tactical' : 'winning'} move that shifted the game by ${Math.round(puzzle.cpSwing)} centipawns.`,
+                }),
+              });
+              const data = await res.json();
+              if (data.shareUrl) {
+                setShowPuzzleModal(false);
+                if (navigator.share) {
+                  navigator.share({
+                    title: `Can you find ${puzzle.playerName}'s winning move?`,
+                    text: `Try this chess puzzle — difficulty: ${'★'.repeat(puzzle.difficulty)}${'☆'.repeat(5 - puzzle.difficulty)}`,
+                    url: data.shareUrl,
+                  });
+                } else {
+                  navigator.clipboard.writeText(data.shareUrl);
+                  alert('Link copied! Share it with your friends.');
+                }
+              }
+            } catch (e) {
+              console.error('Failed to create puzzle:', e);
+              alert('Failed to create puzzle. Please try again.');
+            }
+          }}
+          onSkip={() => setShowPuzzleModal(false)}
+        />
+      )}
     </main>
   );
 }
