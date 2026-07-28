@@ -194,8 +194,7 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
           <Area
             type="monotone"
             dataKey="whiteArea"
-            stroke="#bbbbbb"
-            strokeWidth={0.5}
+            stroke="none"
             fill="url(#whiteFillGrad)"
             baseValue={0}
             isAnimationActive={false}
@@ -206,12 +205,35 @@ export default function EvalChart({ moves, currentIndex, onSelectMove, whiteName
           <Area
             type="monotone"
             dataKey="blackArea"
-            stroke="#666666"
-            strokeWidth={0.5}
+            stroke="none"
             fill="url(#blackFillGrad)"
             baseValue={0}
             isAnimationActive={false}
             dot={false}
+          />
+
+          {/* Continuous line tracing all points — bridges the gap between areas */}
+          <Area
+            type="monotone"
+            dataKey="winningChances"
+            stroke="#888"
+            strokeWidth={1.5}
+            fill="none"
+            isAnimationActive={false}
+            dot={(props: any) => {
+              const { cx, cy, payload } = props;
+              const color = classificationDotColor(payload.classification);
+              if (!color) return null;
+              return (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={2.5}
+                  fill={color}
+                  stroke="none"
+                />
+              );
+            }}
           />
 
           {/* Current position indicator (orange dashed line) */}
