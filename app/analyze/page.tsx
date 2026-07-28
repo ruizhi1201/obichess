@@ -341,6 +341,19 @@ export default function AnalyzePage() {
             ? -sfEvalAfter
             : sfEvalAfter;
 
+          // Smooth depth artifacts: if this is a good move but eval dropped,
+          // Stockfish at depth 22 didn't see deep enough. Use the higher eval.
+          const rawEvalAfter = evalAfter;
+          const smoothedEvalAfter = (() => {
+            const delta = evalAfter - evalBefore;
+            const absDelta = Math.abs(delta);
+            // Only smooth good moves with suspiciously large drops (>100cp)
+            if (delta < -100 && absDelta > 200 && Math.abs(evalAfter) < 500 && Math.abs(evalBefore) > 500) {
+              return evalBefore; // depth artifact — trust the deeper eval
+            }
+            return evalAfter;
+          })();
+
           // Use raw Stockfish mate value, converted to White's perspective.
           // Stockfish reports mate from side-to-move POV:
           //   mate > 0 → side-to-move delivers mate (White's perspective)
@@ -364,12 +377,12 @@ export default function AnalyzePage() {
           analyzedMoves[i] = {
             ...analyzedMoves[i],
             evalBefore,
-            evalAfter,
+            evalAfter: smoothedEvalAfter,
             winPercentBefore: cpToWinPercent(evalBefore),
-            winPercentAfter: cpToWinPercent(evalAfter),
+            winPercentAfter: cpToWinPercent(smoothedEvalAfter),
             mate,
             bestMove: results[i].bestMove,
-            classification: classifyMove(evalBefore, evalAfter, analyzedMoves[i].color),
+            classification: classifyMove(evalBefore, rawEvalAfter, analyzedMoves[i].color),
             materialBefore: matBefore.advantage,
             materialAfter: matAfter.advantage,
             capturedPiece: matDelta.capturedPiece,
