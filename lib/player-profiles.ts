@@ -1,43 +1,84 @@
+import { supabase } from './supabase';
+
 export type RatingType = 'USCF' | 'FIDE' | 'Chess.com' | 'Lichess' | 'Other';
 
 export interface PlayerProfile {
-  id: string; // uuid
+  id: string;
   name: string;
   ratingType: RatingType;
   rating: number;
-  uscfEquivalent: number; // computed
+  uscfEquivalent: number;
   createdAt: number;
   updatedAt: number;
 }
 
-const STORAGE_KEY = 'obichess_profiles';
+/** Fetch all profiles for the currently authenticated user */
+export async function getProfiles(): Promise<PlayerProfile[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
-export function getProfiles(): PlayerProfile[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as PlayerProfile[]) : [];
-  } catch {
+  const { data, error } = await supabase
+    .from('player_profiles')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('updated_at', { ascending: false });
+
+  if (error || !data) {
+    console.error('Failed to fetch profiles:', error);
     return [];
   }
+
+  return data.map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    ratingType: row.rating_type as RatingType,
+    rating: row.rating,
+    uscfEquivalent: row.uscf_equivalent,
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+  }));
 }
 
-export function saveProfile(p: PlayerProfile): void {
-  if (typeof window === 'undefined') return;
-  const profiles = getProfiles();
-  const idx = profiles.findIndex((x) => x.id === p.id);
-  if (idx >= 0) {
-    profiles[idx] = p;
-  } else {
-    profiles.push(p);
+/** Save (insert or update) a profile */
+export async function saveProfile(p: PlayerProfile): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const row = {
+    id: p.id,
+    user_id: user.id,
+    name: p.name,
+    rating_type: p.ratingType,
+    rating: p.rating,
+    uscf_equivalent: p.uscfEquivalent,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('player_profiles')
+    .upsert(row, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save profile:', error);
+    throw new Error('Failed to save profile');
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
 }
 
-export function deleteProfile(id: string): void {
-  if (typeof window === 'undefined') return;
-  const profiles = getProfiles().filter((p) => p.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+/** Delete a profile by ID */
+export async function deleteProfile(id: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('player_profiles')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('Failed to delete profile:', error);
+    throw new Error('Failed to delete profile');
+  }
 }
 
 export function computeUscfEquivalent(rating: number, type: RatingType): number {

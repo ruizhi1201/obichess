@@ -28,6 +28,7 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState<PlayerProfile | null>(null);
   const [focusRating, setFocusRating] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Form state
   const [name, setName] = useState('');
@@ -36,10 +37,16 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
 
   const ratingRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const loaded = getProfiles();
+  const loadProfiles = async () => {
+    setLoading(true);
+    const loaded = await getProfiles();
     setProfiles(loaded);
     if (loaded.length > 0) setSelectedId(loaded[0].id);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadProfiles();
   }, []);
 
   useEffect(() => {
@@ -74,7 +81,7 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
     setStep('form');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim() || rating === '' || rating < 0) return;
     const uscfEq = computeUscfEquivalent(Number(rating), ratingType);
     const now = Date.now();
@@ -87,20 +94,14 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
       createdAt: editingProfile?.createdAt ?? now,
       updatedAt: now,
     };
-    saveProfile(profile);
-    const updated = getProfiles();
-    setProfiles(updated);
-    setSelectedId(profile.id);
+    await saveProfile(profile);
+    await loadProfiles();
     setStep('select');
   };
 
-  const handleDelete = (id: string) => {
-    deleteProfile(id);
-    const updated = getProfiles();
-    setProfiles(updated);
-    if (selectedId === id) {
-      setSelectedId(updated.length > 0 ? updated[0].id : null);
-    }
+  const handleDelete = async (id: string) => {
+    await deleteProfile(id);
+    await loadProfiles();
   };
 
   const handleNext = () => {
@@ -140,7 +141,11 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
             </p>
 
             {/* Profile list */}
-            {profiles.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-6 text-zinc-500 text-sm">
+                Loading profiles...
+              </div>
+            ) : profiles.length === 0 ? (
               <div className="text-center py-6 text-zinc-500 text-sm">
                 No profiles yet. Create one below!
               </div>
