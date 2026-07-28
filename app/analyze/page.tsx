@@ -306,7 +306,7 @@ export default function AnalyzePage() {
 
       for (let i = 0; i < analyzedMoves.length; i++) {
         try {
-          const result = await analyzePosition(analyzedMoves[i].fenBefore, 24);
+          const result = await analyzePosition(analyzedMoves[i].fenBefore, 22);
           results.push(result);
           setAnalysisProgress(Math.round(((i + 1) / (analyzedMoves.length + 1)) * 100));
         } catch {
@@ -317,7 +317,7 @@ export default function AnalyzePage() {
       let lastEval = 0;
       let lastMate: number | null = null;
       try {
-        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 24);
+        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 22);
         lastEval = lastResult.eval;
         lastMate = lastResult.mate;
       } catch {}
