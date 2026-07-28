@@ -19,6 +19,7 @@ interface GameAnalysisInput {
     tacticalPatterns?: string[];
     isTrap?: boolean;
     trapDescription?: string;
+    positionalContext?: string;
   }>;
   userColor: 'w' | 'b';
   whiteName: string;
@@ -89,7 +90,8 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
         const better = m.bestMoveSan && m.bestMoveSan !== m.san ? ` (better: ${m.bestMoveSan})` : '';
         const trapTag = m.isTrap ? ' ⚠️TRAP' : '';
         const patternTag = m.tacticalPatterns && !m.isTrap ? ` [${m.tacticalPatterns.join(',')}]` : '';
-        return `M${m.moveIndex}:${m.san} [${who} ${swingStr} ${m.classification}]${better}${trapTag}${patternTag}`;
+        const posTag = m.positionalContext && !m.isTrap && !patternTag ? ` {${m.positionalContext}}` : '';
+        return `M${m.moveIndex}:${m.san} [${who} ${swingStr} ${m.classification}]${better}${trapTag}${patternTag}${posTag}`;
       }).join('\n')
     : 'No major turning points.';
 
@@ -116,7 +118,8 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
       }).join('\n')
     : '';
 
-  const prompt = `Game: "${userName}" as ${colorName}. ${openingText}\n\n${sigText}\n\n${tacticalText ? tacticalText + '\n\n' : ''}${[skillCtx, focusCtx].filter(Boolean).join('\n')}\n\nReply with ONLY a JSON object, no markdown:\n{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}\n\nRULES:\n- moveNotes keys are moveIndex (0-based).\n- Include ALL moves listed in Key moves above, plus any trap moves.\n- First 8 moves ALWAYS include opening context.\n- For tactical moments (fork/pin/discovered/skewer/hanging), explain the tactic.\n- For trap moves, explain WHY the move seemed quiet but created hidden threats.\n- For best/good moves, note the plan (development, space, control).\n- Short explanations (1-3 sentences each).\n- If you don't have insight for a move, still include it with a brief note.`;
+  // Prompt rules include positional context instruction
+  const prompt = `Game: "${userName}" as ${colorName}. ${openingText}\n\n${sigText}\n\n${tacticalText ? tacticalText + '\n\n' : ''}${[skillCtx, focusCtx].filter(Boolean).join('\n')}\n\nReply with ONLY a JSON object, no markdown:\n{"gameSummary":{"greeting":"warm greeting","wellDone":"what they did well","improve":"what to improve","topics":"study topics"},"moveNotes":{"0":{"explanation":"note for move 0","opening":{"name":"Opening","continuations":["e4 e5","d4 d5","Nf3 Nf6"]}}}}\n\nRULES:\n- moveNotes keys are moveIndex (0-based).\n- Include ALL moves listed in Key moves above, plus any trap moves.\n- First 8 moves ALWAYS include opening context.\n- For tactical moments (fork/pin/discovered/skewer/hanging), explain the tactic.\n- For trap moves, explain WHY the move seemed quiet but created hidden threats.\n- MOVES WITH {positional context}: explain the POSITIONAL idea behind the move. Use concrete chess terms: outpost, open file, pawn break, weak square, space advantage, king safety, piece coordination, central control. Do NOT just say "developing move" — explain WHY this specific square is good.\n- For other best/good moves, note the plan (development, space, control).\n- Short explanations (1-3 sentences each).\n- If you don't have insight for a move, still include it with a brief note.`;
 
   const apiKey = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY;
   if (!apiKey) {

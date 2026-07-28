@@ -35,6 +35,8 @@ export interface AnalyzedMove {
   trapDescription?: string;
   /** Opening explorer data (top 3 variations + win rates) — populated for first 10 half-moves */
   openingExplorer?: OpeningExplorerResult;
+  /** Positional context summary for AI coaching (outposts, open files, pawn structure, etc.) */
+  positionalContext?: string;
 }
 
 /** Per-move AI insight — pre-generated for all moves on PGN load */

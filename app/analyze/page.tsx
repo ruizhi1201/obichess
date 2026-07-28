@@ -410,6 +410,13 @@ export default function AnalyzePage() {
             }
           }
         }
+
+        // ── Positional analysis: detect positional features for AI coaching ──
+        const { positionalSummary } = await import('@/lib/positional');
+        for (let i = 0; i < analyzedMoves.length; i++) {
+          const ctx = positionalSummary(analyzedMoves[i].fenAfter, analyzedMoves[i].color);
+          if (ctx) analyzedMoves[i].positionalContext = ctx;
+        }
       }
 
       setMoves(analyzedMoves);
@@ -483,6 +490,7 @@ export default function AnalyzePage() {
               tacticalPatterns: m.tacticalPatterns,
               isTrap: m.isTrap,
               trapDescription: m.trapDescription,
+              positionalContext: m.positionalContext,
             })),
             userColor: color,
             whiteName: parsed.headers['White'] || 'White',
