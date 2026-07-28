@@ -135,7 +135,7 @@ export async function analyzeGame(input: GameAnalysisInput): Promise<GameAnalysi
     body: JSON.stringify({
       model: 'deepseek-v4-flash',
       messages: [
-        { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\nYou are a chess analysis engine. Always respond with valid JSON only, no markdown or extra text.' },
+        { role: 'system', content: COACH_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
       max_tokens: 12000,
