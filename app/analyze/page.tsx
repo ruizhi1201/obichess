@@ -322,8 +322,22 @@ export default function AnalyzePage() {
 
       if (analyzedMoves.length > 0) {
         for (let i = 0; i < analyzedMoves.length; i++) {
-          const evalBefore = results[i].eval;
-          const evalAfter = i < analyzedMoves.length - 1 ? results[i + 1].eval : lastEval;
+          // Stockfish UCI reports eval from side-to-move POV.
+          // Convert to White's perspective for consistent charting.
+          const sfEvalBefore = results[i].eval;
+          const evalBefore = analyzedMoves[i].color === 'b'
+            ? -sfEvalBefore
+            : sfEvalBefore;
+
+          const sfEvalAfter = i < analyzedMoves.length - 1
+            ? results[i + 1].eval
+            : lastEval;
+          const evalAfterTurn = i < analyzedMoves.length - 1
+            ? analyzedMoves[i + 1].color
+            : (analyzedMoves[i].color === 'w' ? 'b' : 'w');
+          const evalAfter = evalAfterTurn === 'b'
+            ? -sfEvalAfter
+            : sfEvalAfter;
           let mate: number | null = null;
           if (Math.abs(evalAfter) >= 900) {
             mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
