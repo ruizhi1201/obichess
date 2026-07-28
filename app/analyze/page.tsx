@@ -306,7 +306,7 @@ export default function AnalyzePage() {
 
       for (let i = 0; i < analyzedMoves.length; i++) {
         try {
-          const result = await analyzePosition(analyzedMoves[i].fenBefore, 22);
+          const result = await analyzePosition(analyzedMoves[i].fenBefore, 24);
           results.push(result);
           setAnalysisProgress(Math.round(((i + 1) / (analyzedMoves.length + 1)) * 100));
         } catch {
@@ -315,9 +315,11 @@ export default function AnalyzePage() {
       }
 
       let lastEval = 0;
+      let lastMate: number | null = null;
       try {
-        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 22);
+        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 24);
         lastEval = lastResult.eval;
+        lastMate = lastResult.mate;
       } catch {}
 
       if (analyzedMoves.length > 0) {
@@ -338,9 +340,24 @@ export default function AnalyzePage() {
           const evalAfter = evalAfterTurn === 'b'
             ? -sfEvalAfter
             : sfEvalAfter;
+
+          // Use raw Stockfish mate value, converted to White's perspective.
+          // Stockfish reports mate from side-to-move POV:
+          //   mate > 0 → side-to-move delivers mate (White's perspective)
+          //   mate < 0 → side-to-move gets mated (opposite from White's perspective)
+          // Also check evalBefore (same logic).
           let mate: number | null = null;
-          if (Math.abs(evalAfter) >= 900) {
-            mate = evalAfter > 0 ? Math.ceil(1000 - evalAfter) : -Math.ceil(1000 + evalAfter);
+          const sfMateBefore = results[i].mate;
+          const sfMateAfter = i < analyzedMoves.length - 1
+            ? results[i + 1].mate
+            : lastMate;
+
+          if (sfMateAfter != null) {
+            // Raw mate is from side-to-move POV. Convert to White's.
+            mate = evalAfterTurn === 'b' ? -sfMateAfter : sfMateAfter;
+          } else if (sfMateBefore != null) {
+            // Fallback: use eval-before mate position
+            mate = analyzedMoves[i].color === 'b' ? -sfMateBefore : sfMateBefore;
           }
 
           // Material analysis

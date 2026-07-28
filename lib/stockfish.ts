@@ -98,6 +98,9 @@ function handleWorkerMessage(e: MessageEvent<string>) {
       const mateMatch = line.match(/score\s+mate\s+(-?\d+)/);
       if (mateMatch) {
         mate = parseInt(mateMatch[1], 10);
+        // Preserve mate distance sign for accurate display.
+        // mate > 0 = side-to-move delivers mate, mate < 0 = side-to-move gets mated.
+        // Set evalCp to a capped sentinel so cp-based calculations still work:
         evalCp = mate > 0 ? 30000 : -30000;
       } else if (cpMatch) {
         evalCp = parseInt(cpMatch[1], 10);
