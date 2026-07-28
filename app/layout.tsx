@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "Analyze your chess games with AI-powered coaching powered by Stockfish and DeepSeek",
 };
 
-export const APP_VERSION = "0.5.2";
+export const APP_VERSION = "0.5.5";
 
 export default function RootLayout({
   children,

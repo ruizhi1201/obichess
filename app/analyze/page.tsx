@@ -304,9 +304,15 @@ export default function AnalyzePage() {
       const analyzedMoves = [...parsed.moves];
       const results: Awaited<ReturnType<typeof analyzePosition>>[] = [];
 
+      // Rating-based depth: ≥1500 → 18, <1500 → 16
+      const playerElo = color === 'w'
+        ? parseInt(parsed.headers['WhiteElo'] || '1500', 10)
+        : parseInt(parsed.headers['BlackElo'] || '1500', 10);
+      const analysisDepth = playerElo >= 1500 ? 18 : 16;
+
       for (let i = 0; i < analyzedMoves.length; i++) {
         try {
-          const result = await analyzePosition(analyzedMoves[i].fenBefore, 22);
+          const result = await analyzePosition(analyzedMoves[i].fenBefore, analysisDepth);
           results.push(result);
           setAnalysisProgress(Math.round(((i + 1) / (analyzedMoves.length + 1)) * 100));
         } catch {
@@ -317,7 +323,7 @@ export default function AnalyzePage() {
       let lastEval = 0;
       let lastMate: number | null = null;
       try {
-        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, 22);
+        const lastResult = await analyzePosition(analyzedMoves[analyzedMoves.length - 1].fenAfter, analysisDepth);
         lastEval = lastResult.eval;
         lastMate = lastResult.mate;
       } catch {}
@@ -342,7 +348,7 @@ export default function AnalyzePage() {
             : sfEvalAfter;
 
           // Smooth depth artifacts: if this is a good move but eval dropped,
-          // Stockfish at depth 22 didn't see deep enough. Use the higher eval.
+          // Stockfish at limited depth didn't see deep enough. Use the higher eval.
           const rawEvalAfter = evalAfter;
           const smoothedEvalAfter = (() => {
             const delta = evalAfter - evalBefore;
