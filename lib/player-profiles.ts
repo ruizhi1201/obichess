@@ -3,19 +3,22 @@ import { supabase } from './supabase';
 export type RatingType = 'USCF' | 'FIDE' | 'Chess.com' | 'Lichess' | 'Other';
 
 export interface PlayerProfile {
-  id: string;
+  id: string;          // UUID from Supabase (auto-generated for new profiles)
   name: string;
   ratingType: RatingType;
   rating: number;
   uscfEquivalent: number;
-  createdAt: number;
-  updatedAt: number;
+  createdAt: number;   // epoch ms
+  updatedAt: number;   // epoch ms
 }
 
 /** Fetch all profiles for the currently authenticated user */
 export async function getProfiles(): Promise<PlayerProfile[]> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  if (!user) {
+    console.warn('getProfiles: No authenticated user');
+    return [];
+  }
 
   const { data, error } = await supabase
     .from('player_profiles')
@@ -23,29 +26,31 @@ export async function getProfiles(): Promise<PlayerProfile[]> {
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false });
 
-  if (error || !data) {
-    console.error('Failed to fetch profiles:', error);
+  if (error) {
+    console.error('getProfiles: Supabase error:', error.message, error.details, error.hint);
     return [];
   }
+  if (!data) return [];
 
   return data.map((row: any) => ({
     id: row.id,
     name: row.name,
-    ratingType: row.rating_type as RatingType,
-    rating: row.rating,
-    uscfEquivalent: row.uscf_equivalent,
-    createdAt: new Date(row.created_at).getTime(),
-    updatedAt: new Date(row.updated_at).getTime(),
+    ratingType: (row.rating_type as RatingType) ?? 'USCF',
+    rating: row.rating ?? 0,
+    uscfEquivalent: row.uscf_equivalent ?? 0,
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   }));
 }
 
-/** Save (insert or update) a profile */
-export async function saveProfile(p: PlayerProfile): Promise<void> {
+/** Save (insert or update) a profile.
+ *  For new profiles, leave id empty — DB auto-generates UUID.
+ *  For updates, pass the existing UUID. */
+export async function saveProfile(p: PlayerProfile): Promise<PlayerProfile> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const row = {
-    id: p.id,
+  const row: Record<string, unknown> = {
     user_id: user.id,
     name: p.name,
     rating_type: p.ratingType,
@@ -54,14 +59,32 @@ export async function saveProfile(p: PlayerProfile): Promise<void> {
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
+  // For existing profiles, include the id so upsert matches on it
+  if (p.id) {
+    row.id = p.id;
+  }
+
+  const { data, error } = await supabase
     .from('player_profiles')
-    .upsert(row, { onConflict: 'id' });
+    .upsert(row, { onConflict: 'id' })
+    .select()
+    .single();
 
   if (error) {
-    console.error('Failed to save profile:', error);
-    throw new Error('Failed to save profile');
+    console.error('saveProfile: Supabase error:', error.message, error.details, error.hint);
+    throw new Error(`Failed to save profile: ${error.message}`);
   }
+
+  // Return the saved profile with proper ID (especially important for new profiles)
+  return {
+    id: data.id,
+    name: data.name,
+    ratingType: (data.rating_type as RatingType) ?? 'USCF',
+    rating: data.rating ?? 0,
+    uscfEquivalent: data.uscf_equivalent ?? 0,
+    createdAt: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+    updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now(),
+  };
 }
 
 /** Delete a profile by ID */
@@ -76,8 +99,8 @@ export async function deleteProfile(id: string): Promise<void> {
     .eq('user_id', user.id);
 
   if (error) {
-    console.error('Failed to delete profile:', error);
-    throw new Error('Failed to delete profile');
+    console.error('deleteProfile: Supabase error:', error.message, error.details, error.hint);
+    throw new Error(`Failed to delete profile: ${error.message}`);
   }
 }
 
@@ -104,7 +127,7 @@ export interface SkillStep {
 /**
  * Maps a USCF-equivalent rating to a skill step and category:
  *
- *   Step 1 — Beginner           (<500)
+ *   Step 1 — Beginner           (< 500)
  *   Step 2 — Intermediate       (500–1399)
  *   Step 3 — Advanced           (1400–1799)
  *   Step 4 — Competitive/Elite  (1800+)

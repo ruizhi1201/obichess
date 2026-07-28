@@ -16,10 +16,6 @@ interface PlayerProfileModalProps {
   onClose?: () => void;
 }
 
-function generateId(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 const RATING_TYPES: RatingType[] = ['USCF', 'FIDE', 'Chess.com', 'Lichess', 'Other'];
 
 export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileModalProps) {
@@ -29,6 +25,8 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
   const [editingProfile, setEditingProfile] = useState<PlayerProfile | null>(null);
   const [focusRating, setFocusRating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -39,14 +37,20 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
 
   const loadProfiles = async () => {
     setLoading(true);
-    const loaded = await getProfiles();
-    setProfiles(loaded);
-    if (loaded.length > 0) setSelectedId(loaded[0].id);
+    setError(null);
+    try {
+      const loaded = await getProfiles();
+      setProfiles(loaded);
+      if (loaded.length > 0) setSelectedId(loaded[0].id);
+    } catch (e: any) {
+      setError(e.message || 'Failed to load profiles');
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     loadProfiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -61,6 +65,7 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
     setName('');
     setRatingType('USCF');
     setRating('');
+    setError(null);
     setStep('form');
   };
 
@@ -69,6 +74,7 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
     setName(profile.name);
     setRatingType(profile.ratingType);
     setRating(profile.rating);
+    setError(null);
     setStep('form');
   };
 
@@ -78,15 +84,20 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
     setRatingType(profile.ratingType);
     setRating(profile.rating);
     setFocusRating(true);
+    setError(null);
     setStep('form');
   };
 
   const handleSave = async () => {
     if (!name.trim() || rating === '' || rating < 0) return;
+
+    setSaving(true);
+    setError(null);
+
     const uscfEq = computeUscfEquivalent(Number(rating), ratingType);
     const now = Date.now();
     const profile: PlayerProfile = {
-      id: editingProfile?.id ?? generateId(),
+      id: editingProfile?.id ?? '',  // empty string → new profile, DB generates UUID
       name: name.trim(),
       ratingType,
       rating: Number(rating),
@@ -94,19 +105,36 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
       createdAt: editingProfile?.createdAt ?? now,
       updatedAt: now,
     };
-    await saveProfile(profile);
-    await loadProfiles();
-    setStep('select');
+
+    try {
+      const saved = await saveProfile(profile);
+      // Reload to get fresh list (with new UUID for created profiles)
+      await loadProfiles();
+      // Pre-select the saved/updated profile
+      setSelectedId(saved.id);
+      setStep('select');
+    } catch (e: any) {
+      setError(e.message || 'Failed to save profile. Try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    await deleteProfile(id);
-    await loadProfiles();
+    setError(null);
+    try {
+      await deleteProfile(id);
+      await loadProfiles();
+      if (selectedId === id) {
+        setSelectedId(profiles.length > 1 ? profiles[0].id : null);
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to delete profile');
+    }
   };
 
   const handleNext = () => {
     if (!selectedId) {
-      // No profiles yet — open create
       openCreate();
       return;
     }
@@ -139,6 +167,13 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
             <p className="text-zinc-400 text-sm mb-5">
               Select your profile so Obi can coach at the right level.
             </p>
+
+            {/* Error banner */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                {error}
+              </div>
+            )}
 
             {/* Profile list */}
             {loading ? (
@@ -234,6 +269,13 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
               Enter your details to get skill-matched coaching.
             </p>
 
+            {/* Error banner */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-4">
               {/* Name */}
               <div>
@@ -306,10 +348,10 @@ export default function PlayerProfileModal({ onSelect, onClose }: PlayerProfileM
 
             <button
               onClick={handleSave}
-              disabled={!name.trim() || rating === ''}
+              disabled={!name.trim() || rating === '' || saving}
               className="w-full mt-6 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 font-bold px-4 py-2.5 rounded-xl text-sm transition-colors"
             >
-              Save Profile
+              {saving ? 'Saving...' : 'Save Profile'}
             </button>
           </>
         )}
