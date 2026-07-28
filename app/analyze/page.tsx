@@ -347,7 +347,6 @@ export default function AnalyzePage() {
           //   mate < 0 → side-to-move gets mated (opposite from White's perspective)
           // Also check evalBefore (same logic).
           let mate: number | null = null;
-          const sfMateBefore = results[i].mate;
           const sfMateAfter = i < analyzedMoves.length - 1
             ? results[i + 1].mate
             : lastMate;
@@ -355,9 +354,6 @@ export default function AnalyzePage() {
           if (sfMateAfter != null) {
             // Raw mate is from side-to-move POV. Convert to White's.
             mate = evalAfterTurn === 'b' ? -sfMateAfter : sfMateAfter;
-          } else if (sfMateBefore != null) {
-            // Fallback: use eval-before mate position
-            mate = analyzedMoves[i].color === 'b' ? -sfMateBefore : sfMateBefore;
           }
 
           // Material analysis
